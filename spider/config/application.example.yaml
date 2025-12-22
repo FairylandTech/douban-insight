@@ -9,4 +9,4 @@ douban:
     host: localhost
     port: 6379
     db: 15
-    password:
+    password: xxxx

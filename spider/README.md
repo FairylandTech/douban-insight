@@ -19,4 +19,34 @@ Development Environment
 
 # 数据来源
 
-movie.douban.com
+-[豆瓣电影](movie.douban.com)
+
+# 快速开始
+
+## 环境和依赖
+
+```shell
+python -m venv .venv
+source .venv/bin/activate
+pip install --no-cache-dir -r requirements.txt
+```
+
+## 配置文件
+
+### 项目配置文件
+
+请参考 `config/application.example.yaml` 创建 `config/application.yaml`，并根据需要修改配置参数。
+
+### 豆瓣 Cookies 配置文件
+
+请参考 `config/douban.cookies.example` 创建 `config/douban.cookies`，并根据需要修改配置参数。
+
+## 运行爬虫
+
+```shell
+scrapy crawl douban-movie
+```
+
+## 日志输出
+
+日志文件保存在 `logs/douban` 目录下，文件名格式为 `douban-xxx.log`。
