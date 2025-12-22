@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://gist.githubusercontent.com/FairylandTech/f52daac2055982c28b9fdb4189bb7097/raw/4dc771d3f9038d817f88bdbb02bfd62612ca1bdf/fairylandlogger-config.schema.json
+# @software: PyCharm
+# @author: Lionel Johnson
+# @contact: https://fairy.host
+# @organization: https://github.com/FairylandFuture
+# @datetime: 2025-12-02 11:57:31 UTC+08:00
+---
+fairyland:
+  logger:
+    level: DEBUG
+    console: true
+    file: true
+    dirname: logs
+    rotation: 10 MB
+    retention: 180 days
+    json: false
