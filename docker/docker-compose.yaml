@@ -1,0 +1,32 @@
+# @software: PyCharm
+# @author: Lionel Johnson
+# @contact: https://fairy.host
+# @organization: https://github.com/FairylandFuture
+# @datetime: 2025-12-22 19:05:14 UTC+08:00
+---
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres-service
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: hBffOsgCm4DXs4J8z1nhj1Ba7gND7tZy
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
+    volumes:
+      - data:/var/lib/postgresql/data
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+    restart: always
+
+volumes:
+  data:
+
