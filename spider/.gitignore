@@ -3,4 +3,8 @@
 *.cookies
 application.yaml
 
+*.log
+*.logs
+
 logs/
+tmp/
