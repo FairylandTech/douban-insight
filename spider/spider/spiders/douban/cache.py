@@ -47,15 +47,15 @@ class DoubanCacheManager(RedisCacheManager):
 
     def save_task(self, task: "MovieTask"):
         try:
-            key = self._get_key(f"douban:movie:task:{task.movie_id}")
-            self.Log.info(f"保存任务 {key} 到缓存")
+            key = f"douban:movie:task:{task.movie_id}"
             task.update_time = time.time()
 
             task_data = asdict(task)
             task_data.update(status=task.status.value)
             self.Log.info(f"任务数据: {task_data}")
 
-            self.set(key=key, value=json.dumps(task_data, ensure_ascii=False, separators=(',', ':')))
+            self.Log.info(f"保存任务 {key} 到缓存")
+            self.set(key=key, value=json.dumps(task_data, ensure_ascii=False, separators=(",", ":")))
             return True
         except Exception as err:
             self.Log.error(f"保存任务 {task.movie_id} 失败: {err}")
@@ -72,7 +72,7 @@ class DoubanCacheManager(RedisCacheManager):
 
         try:
             task_data = json.loads(data)
-            task_data['status'] = SpiderStatus(task_data['status'])
+            task_data["status"] = SpiderStatus(task_data["status"])
             self.Log.info(f"{movie_id} 任务数据: {task_data}")
             return MovieTask(**task_data)
         except (json.JSONDecodeError, KeyError, ValueError) as e:
@@ -80,8 +80,20 @@ class DoubanCacheManager(RedisCacheManager):
             return None
 
     def mark_processing(self, movie_id: str) -> bool:
-        task = self.get_task(movie_id) or MovieTask(movie_id=movie_id)
+        self.Log.info(f"标记任务 {movie_id} 为处理中")
+        task = self.get_task(movie_id)
         task.status = SpiderStatus.PROCESSING
+        return self.save_task(task)
+
+    def mark_parsed_info(self, movie_id: str) -> bool:
+        self.Log.info(f"标记任务 {movie_id} 为信息已解析")
+        task = self.get_task(movie_id)
+        task.status = SpiderStatus.PARSED_INFO
+        return self.save_task(task)
+
+    def mark_parsed_comment(self, movie_id: str) -> bool:
+        task = self.get_task(movie_id)
+        task.status = SpiderStatus.PARSED_COMMENT
         return self.save_task(task)
 
     def mark_completed(self, movie_id: str, data: dict = None) -> bool:
@@ -107,13 +119,7 @@ class DoubanCacheManager(RedisCacheManager):
         pattern = self._get_key("task", "*")
         keys = self.redis.keys(pattern)
 
-        stats = {
-            "total": 0,
-            "pending": 0,
-            "processing": 0,
-            "completed": 0,
-            "failed": 0
-        }
+        stats = {"total": 0, "pending": 0, "processing": 0, "completed": 0, "failed": 0}
 
         for key in keys:
             task = self.get_task(key.split(":")[-1])
@@ -122,3 +128,31 @@ class DoubanCacheManager(RedisCacheManager):
                 stats[task.status.value] += 1
 
         return stats
+
+    def get_tasks(self):
+        pattern = self._get_key("douban:movie:task:*")
+        keys: t.List[bytes] = self.redis.keys(pattern)
+        self.Log.info(f"获取所有任务，匹配模式: {pattern}")
+
+        tasks: t.List["MovieTask"] = []
+        for key in keys:
+            key: bytes
+            value: bytes = self.redis.get(key.decode("UTF-8"))
+            if not value:
+                self.Log.warning(f"任务 {key.decode('UTF-8')} 数据为空, 跳过")
+                continue
+
+            value_asdict: t.Dict[str, t.Any] = json.loads(value)
+            task = MovieTask(
+                movie_id=value_asdict.get("movie_id"),
+                status=SpiderStatus(value_asdict.get("status")),
+                create_time=value_asdict.get("create_time"),
+                update_time=value_asdict.get("update_time"),
+                retry_count=value_asdict.get("retry_count"),
+                max_retries=value_asdict.get("max_retries"),
+                error_msg=value_asdict.get("error_msg"),
+                data=value_asdict.get("data"),
+            )
+            tasks.append(task)
+
+        return tasks

@@ -14,5 +14,7 @@ from enum import Enum
 class SpiderStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
+    PARSED_INFO = "parsed_info"
+    PARSED_COMMENT = "parsed_comment"
     COMPLETED = "completed"
     FAILED = "failed"
