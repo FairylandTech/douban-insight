@@ -37,25 +37,41 @@ def main():
 
     session.cookies.update({key: morsel.value for key, morsel in cookies.items()})
 
+    params = {
+        "refresh": "0",
+        "start": "20",
+        "count": "20",
+        # "selected_categories": {"类型": "喜剧"},
+        "selected_categories": {},
+        "uncollect": False,
+        "score_range": "0,10",
+        "tags": "",
+        "ck": "kfPA",
+    }
+
     response = session.get(
-        url="https://m.douban.com/rexxar/api/v2/subject/recent_hot/movie?start=0&limit=20&ck=kfPA",
+        url = "https://m.douban.com/rexxar/api/v2/movie/recommend",
+        params=params,
         headers=headers,
         timeout=30,
     )
     response.raise_for_status()
+
+    print(response.json())
+
     ids = [i.get("id") for i in response.json().get("items")]
     print(ids)
     # 存入 redis 任务状态为 padding
 
     # 获取电影信息
-    movie_url = f"https://movie.douban.com/subject/{ids[0]}/"
-    response2 = session.get(
-        url=movie_url,
-        headers=headers,
-        timeout=30,
-    )
-    response2.raise_for_status()
-    print(response2.text)
+    # movie_url = f"https://movie.douban.com/subject/{ids[0]}/"
+    # response2 = session.get(
+    #     url=movie_url,
+    #     headers=headers,
+    #     timeout=30,
+    # )
+    # response2.raise_for_status()
+    # print(response2.text)
     # redis 任务 任务状态为 processing
 
     spider = MovieInfoSpider(session)
@@ -63,5 +79,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     pass

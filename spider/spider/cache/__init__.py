@@ -29,7 +29,8 @@ class RedisCacheManager:
 
     def get(self, key: str) -> t.Any:
         redis_key = self._get_key(key)
-        return self.redis.get(name=redis_key)
+        redis_value: bytes = self.redis.get(name=redis_key)
+        return redis_value.decode("UTF-8") if redis_value else None
 
     def set(self, key: str, value: t.Any, expire: int | None = None) -> None:
         redis_key = self._get_key(key)
