@@ -37,3 +37,15 @@ class DoubanUtils:
         except Exception as error:
             cls.logger.error(f"加载 Cookie 失败: {error}")
             raise error
+
+    @classmethod
+    def query_sql_clean(cls, query: str) -> str:
+        """
+        清理 SQL 语句中的多余空白字符
+
+        :param query: 原始 SQL 语句
+        :type query: str
+        :return: 清理后的 SQL 语句
+        :rtype: str
+        """
+        return " ".join(query.split())

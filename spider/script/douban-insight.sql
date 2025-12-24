@@ -13,6 +13,7 @@ create table if not exists tb_movie
     release_date  date,
     score         float,
     summary       text,
+    icon          varchar(255),
     created_at    datetime default current_timestamp                             not null,
     updated_at    datetime default current_timestamp on update current_timestamp not null,
     deleted       boolean  default false

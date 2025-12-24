@@ -25,3 +25,12 @@ class MovieStructure(BaseFrozenStructure):
     release_date: t.Union[datetime.date, str]
     score: float
     summary: str
+    icon: str
+
+
+@dataclass(frozen=True)
+class MovieArtistStructure(BaseFrozenStructure):
+    """豆瓣电影演员数据结构"""
+
+    artist_id: str
+    name: str

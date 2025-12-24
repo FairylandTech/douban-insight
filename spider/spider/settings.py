@@ -33,11 +33,11 @@ ROBOTSTXT_OBEY = True
 
 CONCURRENT_REQUESTS_PER_DOMAIN = 1
 
-DOWNLOAD_DELAY = 1
+DOWNLOAD_DELAY = 5
 
 FEED_EXPORT_ENCODING = "UTF-8"
 
 ITEM_PIPELINES = {
     # 处理豆瓣电影数据的 Pipeline
-    # "spider.spiders.douban.pipelines.DoubanMoviePipeline": 300,
+    "spider.spiders.douban.pipelines.DoubanMoviePipeline": 300,
 }

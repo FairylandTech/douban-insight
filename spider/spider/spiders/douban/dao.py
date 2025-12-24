@@ -6,14 +6,15 @@
 @organization: https://github.com/FairylandFuture
 @datetime: 2025-12-24 00:45:14 UTC+08:00
 """
-
+import traceback
 import typing as t
 
 from fairylandlogger import LogManager, Logger
 
 from fairylandfuture.database.mysql import MySQLOperator
 from fairylandfuture.structures.database import MySQLExecuteStructure
-from spider.spiders.douban.structures import MovieStructure
+from spider.spiders.douban.structures import MovieStructure, MovieArtistStructure
+from spider.spiders.douban.utils import DoubanUtils
 
 Log: "Logger" = LogManager.get_logger("douban-dao", "douban")
 
@@ -24,18 +25,59 @@ class MovieDAO:
     def __init__(self, db: "MySQLOperator"):
         self.db = db
 
-    def insert_movie(self, movie_data: "MovieStructure") -> int:
-        """插入电影信息"""
+    def get_movie_by_movie_id(self, movie_id: str):
+        query = """
+                select id,
+                       movie_id,
+                       full_name,
+                       chinese_name,
+                       original_name,
+                       release_date,
+                       score,
+                       summary,
+                       icon
+                from tb_movie
+                where movie_id = %(movie_id)s
+                  and deleted is false
+                """
+        args = {"movie_id": movie_id}
+        query = DoubanUtils.query_sql_clean(query)
+        Log.debug(f"查询电影信息, Query: {query}, Args: {args}")
+
+        execute = MySQLExecuteStructure(query, args)
+
+        result = self.db.select(execute)
+        Log.debug(f"查询结果: {result}")
+
+        if isinstance(result, bool) or not result:
+            return None
+
+        if len(result) == 1:
+            result = result[0]
+        else:
+            result = None
+
+        return result
+
+    def insert_movie(self, movie_data: "MovieStructure"):
+        existing_movie = self.get_movie_by_movie_id(movie_data.movie_id)
+        if existing_movie:
+            Log.info(f"电影已存在: {movie_data.full_name} ({movie_data.movie_id})")
+            return
+
+        query = """
+                insert into
+                    tb_movie (movie_id, full_name, chinese_name, original_name, release_date, score, summary, icon)
+                values
+                    (%(movie_id)s, %(full_name)s, %(chinese_name)s, %(original_name)s, %(release_date)s, %(score)s, %(summary)s, %(icon)s);
+                """
+        args = movie_data.to_dict()
+        query = DoubanUtils.query_sql_clean(query)
+        Log.debug(f"插入电影信息, Query: {query}, Args: {args}")
+
+        execute = MySQLExecuteStructure(query, args)
 
         try:
-            query = """
-                    insert into tb_movie
-                        (movie_id, full_name, chinese_name, original_name, release_date, score, summary)
-                    values
-                        (%(movie_id)s, %(full_name)s, %(chinese_name)s, %(original_name)s, %(release_date)s, %(score)s, %(summary)s); \
-                    """
-            args = movie_data.to_dict()
-            execute = MySQLExecuteStructure(query, args)
             result = self.db.insert(execute)
             Log.info(f"插入电影信息, BD Result: {result}")
             Log.info(f"保存电影: {movie_data.full_name} ({movie_data.movie_id})")
@@ -50,49 +92,93 @@ class ArtistDAO:
     def __init__(self, db: "MySQLOperator"):
         self.db = db
 
-    def insert_artist(self, artist_data: dict) -> int:
-        """插入或更新演员信息，返回 artist 表的自增ID"""
-        sql = """
-            INSERT INTO tb_artist 
-            (artist_id, name, birthday, photo, personage)
-            VALUES (%s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-            name = VALUES(name),
-            birthday = VALUES(birthday),
-            photo = VALUES(photo),
-            personage = VALUES(personage),
-            updated_at = NOW()
-        """
+    def get_artist_by_artist_id(self, artist_id: str):
+        query = """
+                select id, artist_id, name
+                from tb_artist
+                where artist_id = %(artist_id)s
+                  and deleted is false
+                """
+        args = {"artist_id": artist_id}
+        query = DoubanUtils.query_sql_clean(query)
+        Log.debug(f"查询演员信息, Query: {query}, Args: {args}")
 
-        with self.db.get_cursor() as cursor:
-            try:
-                cursor.execute(
-                    sql,
-                    (
-                        artist_data.get("artist_id"),
-                        artist_data.get("name"),
-                        artist_data.get("birthday"),
-                        artist_data.get("photo"),
-                        artist_data.get("personage"),
-                    ),
-                )
-                Log.debug(f"保存艺术家: {artist_data.get('name')}")
+        execute = MySQLExecuteStructure(query, args)
 
-                # 获取艺术家的自增ID
-                cursor.execute("SELECT id FROM tb_artist WHERE artist_id = %s", (artist_data.get("artist_id"),))
-                result = cursor.fetchone()
-                return result["id"] if result else None
-            except Exception as err:
-                Log.error(f"保存艺术家失败: {err}")
-                raise err
+        result = self.db.select(execute)
+        Log.debug(f"查询结果: {result}")
 
-    def get_artist_by_artist_id(self, artist_id: str) -> t.Optional[dict]:
-        """根据艺术家ID获取艺术家"""
-        sql = "SELECT id, artist_id FROM tb_artist WHERE artist_id = %s AND deleted = 0"
+        if isinstance(result, bool) or not result:
+            return None
 
-        with self.db.get_cursor() as cursor:
-            cursor.execute(sql, (artist_id,))
-            return cursor.fetchone()
+        if len(result) == 1:
+            result = result[0]
+        else:
+            result = None
+
+        return result
+
+    def insert_artist(self, artist_data: "MovieArtistStructure"):
+        existing_artist = self.get_artist_by_artist_id(artist_data.artist_id)
+        if existing_artist:
+            Log.info(f"艺术家已存在: {artist_data.name} ({artist_data.artist_id})")
+            return
+
+        query = """
+                insert into
+                    tb_artist (artist_id, name)
+                values
+                    (%(artist_id)s, %(name)s)
+                """
+        args = artist_data.to_dict()
+        query = DoubanUtils.query_sql_clean(query)
+        Log.debug(f"插入演员信息, Query: {query}, Args: {args}")
+
+        execute = MySQLExecuteStructure(query, args)
+        try:
+            result = self.db.insert(execute)
+            Log.info(f"插入演员信息, BD Result: {result}")
+            Log.info(f"保存艺术家: {artist_data.name}")
+        except Exception as err:
+            Log.error(f"保存艺术家失败: {err}")
+            Log.error(traceback.format_exc())
+            raise err
+
+    def insert_movie_artist_relation(self, typed: str, movie_id: str, artist_id: str):
+        if typed == "director":
+            query = """
+                    insert into
+                        tb_movie_director_artist_relation (movie_id, artist_id)
+                    values
+                        (%(movie_id)s, %(artist_id)s)
+                    """
+        elif typed == "writer":
+            query = """
+                    insert into
+                        tb_movie_writer_artist_relation (movie_id, artist_id)
+                    values
+                        (%(movie_id)s, %(artist_id)s)
+                    """
+        else:  # actor
+            query = """
+                    insert into
+                        tb_movie_actor_artist_relation (movie_id, artist_id)
+                    values
+                        (%(movie_id)s, %(artist_id)s) \
+                    """
+        args = {"movie_id": movie_id, "artist_id": artist_id}
+        query = DoubanUtils.query_sql_clean(query)
+        Log.debug(f"插入电影-艺术家关系, Query: {query}, Args: {args}")
+
+        execute = MySQLExecuteStructure(query, args)
+
+        try:
+            result = self.db.insert(execute)
+            Log.info(f"插入电影-艺术家关系, BD Result: {result}")
+            Log.info(f"保存电影-艺术家关系: movie_id={movie_id}, artist_id={artist_id}, type={typed}")
+        except Exception as err:
+            Log.error(f"保存电影-艺术家关系失败: {err}")
+            raise err
 
 
 class MovieTypeDAO:

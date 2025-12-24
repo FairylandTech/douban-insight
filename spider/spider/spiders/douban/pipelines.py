@@ -6,7 +6,7 @@
 @organization: https://github.com/FairylandFuture
 @datetime: 2025-12-24 00:34:45 UTC+08:00
 """
-
+import traceback
 import typing as t
 
 import scrapy
@@ -15,9 +15,12 @@ from itemadapter import ItemAdapter
 
 from fairylandfuture.database.mysql import MySQLConnector, MySQLOperator
 from fairylandfuture.structures.database import MySQLExecuteStructure
+from spider.spiders.douban.cache import RedisManager, DoubanCacheManager
 from spider.spiders.douban.config import DoubanConfig
+from spider.spiders.douban.dao import ArtistDAO
 from spider.spiders.douban.items import MovieInfoTiem
 from spider.spiders.douban.dao import MovieDAO
+from spider.spiders.douban.structures import MovieStructure, MovieArtistStructure
 
 
 class DoubanMoviePipeline:
@@ -29,8 +32,10 @@ class DoubanMoviePipeline:
         self.config: t.Dict[str, t.Any] = DoubanConfig.load().get("mysql", {})
         self.__db_connector: t.Optional["MySQLConnector"] = None
         self.db: t.Optional["MySQLOperator"] = None
+        self.redis: "DoubanCacheManager" = RedisManager
 
         self.movie_dao: t.Optional["MovieDAO"] = None
+        self.movie_artist_dao: t.Optional["ArtistDAO"] = None
 
     def open_spider(self, spider):
         """爬虫启动时连接数据库"""
@@ -46,6 +51,7 @@ class DoubanMoviePipeline:
             self.db: "MySQLOperator" = MySQLOperator(connector=self.__db_connector)
 
             self.movie_dao = MovieDAO(db=self.db)
+            self.movie_artist_dao = ArtistDAO(db=self.db)
         except Exception as err:
             self.Log.error(f"数据库连接失败: {err}")
             raise err
@@ -63,8 +69,10 @@ class DoubanMoviePipeline:
         try:
             if isinstance(item, MovieInfoTiem):
                 self.__process_movie_info(item)
+                self.redis.mark_completed(item.get("movie_id"), dict(MovieInfoTiem))
         except Exception as err:
             self.Log.error(f"处理数据项失败: {err}")
+            self.Log.error(traceback.format_exc())
 
         return item
 
@@ -89,22 +97,18 @@ class DoubanMoviePipeline:
         countries = item.get("countries", [])
 
         # 插入电影信息
-        self.db.insert(
-            MySQLExecuteStructure(
-                query="""
-                    insert into
-                        tb_movie (movie_id, full_name, chinese_name, original_name, release_date, score, summary, icon)
-                    values
-                        (%s, %s, %s, %s, %s, %s, %s, %s);
-                """,
-                args=movie_info,
-            )
-        )
-        self.Log.info(f"保存电影: {movie_info.get('full_name')} (ID: {movie_info.get('movie_id')})")
+        movie_data = MovieStructure(**movie_info)
+        self.movie_dao.insert_movie(movie_data)
 
         # 插入导演、编剧、演员 到 tb_artist 并建立关系
-        artist: t.List[t.Dict[str, str]] = []
-        artist.extend(directors)
-        artist.extend(writers)
-        artist.extend(actors)
-        artist = list({item.get("artist_id"): item for item in artist}.values())
+        artists: t.List[t.Dict[str, str]] = []
+        artists.extend([{"artist_id": director.get("artist_id"), "name": director.get("name"), "role": "director"} for director in directors])
+        artists.extend([{"artist_id": writer.get("artist_id"), "name": writer.get("name"), "role": "writer"} for writer in writers])
+        artists.extend([{"artist_id": actor.get("artist_id"), "name": actor.get("name"), "role": "actor"} for actor in actors])
+        for artist in artists:
+            role = artist.get("role")
+            artist_data = MovieArtistStructure(artist_id=artist.get("artist_id"), name=artist.get("name"))
+            # 插入艺术家信息
+            self.movie_artist_dao.insert_artist(artist_data)
+            # 建立电影与艺术家关系
+            self.movie_artist_dao.insert_movie_artist_relation(role, movie_data.movie_id, artist_data.artist_id)

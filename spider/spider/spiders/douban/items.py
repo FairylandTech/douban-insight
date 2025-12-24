@@ -37,15 +37,6 @@ class MovieInfoTiem(scrapy.Item):
     icon = scrapy.Field()
 
 
-class ArtistItem(scrapy.Item):
-    """演员/导演/编剧数据项"""
-
-    # 艺术家ID String
-    artist_id = scrapy.Field()
-    # 艺术家姓名 String
-    name = scrapy.Field()
-
-
 class MovieCommentItem(scrapy.Item):
     """电影评论数据项"""
 

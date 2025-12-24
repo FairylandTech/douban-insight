@@ -15,6 +15,7 @@ from urllib.parse import urlencode
 
 import fake_useragent
 import scrapy
+import unicodedata
 from fairylandlogger import LogManager, Logger
 
 from fairylandfuture.helpers.json.serializer import JsonSerializerHelper
@@ -84,7 +85,7 @@ class DoubanMovieSpider(scrapy.Spider):
         params = {
             "refresh": "0",
             "start": start_index,
-            "count": "1",
+            "count": "20",
             "selected_categories": {},
             "uncollect": False,
             "score_range": "0,10",
@@ -162,7 +163,6 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: Scrapy 请求生成器
         :rtype: scrapy.Request
         """
-        movie_id = "35419153"
         movie_url = f"https://movie.douban.com/subject/{movie_id}/"
         self.Log.info(f"请求电影信息: ID={movie_id}, URL={movie_url}")
 
@@ -222,16 +222,16 @@ class DoubanMovieSpider(scrapy.Spider):
                 icon=icon,
             )
 
-            # self.Cache.mark_parsed(movie_id)
+            self.Cache.mark_parsed(movie_id)
 
             self.Log.info(f"成功解析电影信息: ID={movie_id}, Data={JsonSerializerHelper.serialize(item)}")
 
-            # yield item
+            yield item
 
         except Exception as error:
             self.Log.error(f"解析电影信息失败: ID={movie_id}, Error={error}")
             self.Log.error(traceback.format_exc())
-            # self.Cache.mark_failed(movie_id, str(error))
+            self.Cache.mark_failed(movie_id, str(error))
 
     def made_headers(self) -> t.Dict[str, str]:
         """
@@ -280,6 +280,10 @@ class DoubanMovieSpider(scrapy.Spider):
         other = " ".join(parts[1:]) if len(parts) > 1 else ""
         return chinese, other
 
+    @staticmethod
+    def remove_control_chars(text: str) -> str:
+        return "".join(ch for ch in text if not unicodedata.category(ch).startswith("C"))
+
     def __wrapper_css(self, css: scrapy.selector.SelectorList) -> str:
         """
         CSS 选择器包装器，提取文本并去除多余空白
@@ -301,7 +305,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :rtype: str
         """
         try:
-            return self.__wrapper_css(response.css("""h1 span[property="v:itemreviewed"]::text"""))
+            return self.remove_control_chars(self.__wrapper_css(response.css("""h1 span[property="v:itemreviewed"]::text""")))
         except Exception as error:
             raise error
 
@@ -316,6 +320,7 @@ class DoubanMovieSpider(scrapy.Spider):
         """
         try:
             content = self.__wrapper_css(response.css("""span[property="v:initialReleaseDate"]::text"""))
+            self.Log.info(f"提取上映日期内容: {content}")
             return datetime.datetime.strptime(content[:10], "%Y-%m-%d").date()
         except Exception as error:
             raise error
