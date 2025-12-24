@@ -4,27 +4,25 @@
 @author: Lionel Johnson
 @contact: https://fairy.host
 @organization: https://github.com/FairylandFuture
-@datetime: 2025-12-22 21:43:28 UTC+08:00
+@datetime: 2025-12-24 19:04:20 UTC+08:00
 """
 
 import datetime
 import json
 import traceback
 import typing as t
-from http.cookies import SimpleCookie
 from urllib.parse import urlencode
 
+import fake_useragent
 import scrapy
 from fairylandlogger import LogManager, Logger
-from scrapy.http import Response
-from twisted.python.failure import Failure
 
+from fairylandfuture.helpers.json.serializer import JsonSerializerHelper
 from spider.enums import SpiderStatus
-from spider.spiders.douban.cache import DoubanCacheManager
-from spider.spiders.douban.items import MovieCommentItem, MovieInfoTiem
+from spider.spiders.douban.cache import DoubanCacheManager, RedisManager
+from spider.spiders.douban.items import MovieInfoTiem
 from spider.spiders.douban.structure import MovieTask
-
-import fake_useragent
+from spider.spiders.douban.utils import DoubanUtils
 
 
 class DoubanMovieSpider(scrapy.Spider):
@@ -34,9 +32,9 @@ class DoubanMovieSpider(scrapy.Spider):
     """
 
     Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-spider", "douban")
-    Cache: t.ClassVar["DoubanCacheManager"] = DoubanCacheManager()
+    Cache: t.ClassVar["DoubanCacheManager"] = RedisManager
 
-    name = "douban-movie"
+    name = "douban-movie-info"
     allowed_domains = ["douban.com", "m.douban.com"]
 
     def __init__(self, *args, **kwargs):
@@ -45,28 +43,7 @@ class DoubanMovieSpider(scrapy.Spider):
             "User-Agent": fake_useragent.FakeUserAgent(os="Windows").random,
             "Referer": "https://movie.douban.com/explore",
         }
-        self.cookies = self._load_cookies_from_file("config/douban.cookies")
-
-    def _load_cookies_from_file(self, file_path: str) -> dict:
-        """
-        从文件加载 Cookie
-
-        :param file_path: Cookie 文件路径
-        :type file_path: str
-        :return: Cookie 字典
-        :rtype: dict
-        """
-        cookie = SimpleCookie()
-        try:
-            with open(file_path, "r", encoding="UTF-8") as f:
-                cookie.load(f.read())
-            return {k: m.value for k, m in cookie.items()}
-        except FileNotFoundError as error:
-            self.Log.warning("Cookie 文件未找到")
-            raise error
-        except Exception as error:
-            self.Log.error(f"加载 Cookie 失败: {error}")
-            raise error
+        self.cookies = DoubanUtils.load_cookies_from_file("config/douban.cookies")
 
     def start_requests(self):
         """
@@ -79,19 +56,15 @@ class DoubanMovieSpider(scrapy.Spider):
         self.Log.info(f"缓存中待处理任务数量: {len(tasks)}")
 
         # 处理缓存中的任务
-        has_pending = False
+        exec_cache_task = False
         for task in tasks:
-            if task.status == SpiderStatus.PENDING or task.status == SpiderStatus.PROCESSING:
-                has_pending = True
-                self.Log.info(f"继续处理 PENDING 任务(电影信息/解析电影信息): {task.movie_id}")
+            if task.status != SpiderStatus.COMPLETED:
+                exec_cache_task = True
+                self.Log.info(f"继续处理任务(电影信息/解析电影信息): {task.movie_id}")
                 yield from self.__request_movie_info(task.movie_id)
 
-            elif task.status == SpiderStatus.PARSED_INFO:
-                self.Log.info(f"继续处理 PARSING 任务(电影短评): {task.movie_id}")
-                yield from self.__request_movie_comments(task.movie_id)
-
         # 如果没有待处理任务, 则获取新的电影ID列表
-        if not has_pending:
+        if not exec_cache_task:
             self.Log.info("没有待处理任务，开始获取新的电影ID列表")
             yield from self.__request_movie_ids()
 
@@ -119,27 +92,6 @@ class DoubanMovieSpider(scrapy.Spider):
             "ck": "kfPA",
         }
 
-        headers = self.headers.copy()
-        headers.update(
-            {
-                "authority": "m.douban.com",
-                "accept": "application/json, text/plain, */*",
-                "accept-encoding": "gzip, deflate, br, zstd",
-                "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
-                "cache-control": "no-cache",
-                "origin": "https://movie.douban.com",
-                "pragma": "no-cache",
-                "priority": "u=1, i",
-                "referer": "https://movie.douban.com/explore",
-                "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-            }
-        )
-
         url_with_params = f"{url}?{urlencode(params, doseq=True)}"
 
         self.Log.info(f"请求电影ID列表: {url_with_params}")
@@ -147,11 +99,11 @@ class DoubanMovieSpider(scrapy.Spider):
         yield scrapy.Request(
             method="GET",
             url=url_with_params,
-            headers=headers,
+            headers=self.made_headers(),
             cookies=self.cookies,
             callback=self.__parse_movie_ids,
             dont_filter=True,
-            errback=self._handle_error,
+            # errback=self._handle_error,
         )
 
     def __parse_movie_ids(self, response: scrapy.http.Response):
@@ -210,6 +162,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: Scrapy 请求生成器
         :rtype: scrapy.Request
         """
+        movie_id = "35419153"
         movie_url = f"https://movie.douban.com/subject/{movie_id}/"
         self.Log.info(f"请求电影信息: ID={movie_id}, URL={movie_url}")
 
@@ -222,11 +175,11 @@ class DoubanMovieSpider(scrapy.Spider):
             callback=self.__parse_movie_info,
             cb_kwargs={"movie_id": movie_id},
             dont_filter=True,
-            errback=self._handle_error,
+            # errback=self._handle_error,
             meta={"movie_id": movie_id},
         )
 
-    def __parse_movie_info(self, response: Response, movie_id: str):
+    def __parse_movie_info(self, response: scrapy.http.Response, movie_id: str):
         """
         解析电影信息页面
 
@@ -269,103 +222,57 @@ class DoubanMovieSpider(scrapy.Spider):
                 icon=icon,
             )
 
-            self.Cache.mark_parsed_info(movie_id)
+            # self.Cache.mark_parsed(movie_id)
 
-            yield item
-            # yield from self.__request_movie_comments(movie_id)
+            self.Log.info(f"成功解析电影信息: ID={movie_id}, Data={JsonSerializerHelper.serialize(item)}")
+
+            # yield item
 
         except Exception as error:
             self.Log.error(f"解析电影信息失败: ID={movie_id}, Error={error}")
             self.Log.error(traceback.format_exc())
-            self.Cache.mark_failed(movie_id, str(error))
+            # self.Cache.mark_failed(movie_id, str(error))
 
-    def __request_movie_comments(self, movie_id: str, start: int = 0):
+    def made_headers(self) -> t.Dict[str, str]:
         """
-        请求电影评论页面
+        生成请求电影ID列表的请求头
 
-        :param movie_id: 电影ID
-        :type movie_id: str
-        :param start: 评论起始索引
-        :type start: int
-        :return:
-        :rtype:
+        :return: 请求头
+        :rtype: dict
         """
-        comments_url = f"https://movie.douban.com/subject/{movie_id}/comments"
-        params = {
-            "start": start,
-            "limit": 20,
-            "status": "P",
-            "sort": "new_score",
-        }
-
-        url_with_params = f"{comments_url}?{urlencode(params)}"
-        self.Log.info(f"请求电影评论: ID={movie_id}, start={start}")
-
-        # 更新状态为 PARSED_COMMENT
-        if start == 0:
-            self.Cache.mark_parsed_comment(movie_id)
-
-        yield scrapy.Request(
-            url=url_with_params,
-            headers=self.headers,
-            cookies=self.cookies,
-            callback=self.__parse_movie_comments,
-            cb_kwargs={"movie_id": movie_id, "start": start},
-            dont_filter=True,
-            errback=self._handle_error,
-            meta={"movie_id": movie_id},
+        headers = self.headers.copy()
+        headers.update(
+            {
+                "authority": "m.douban.com",
+                "accept": "application/json, text/plain, */*",
+                "accept-encoding": "gzip, deflate, br, zstd",
+                "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "cache-control": "no-cache",
+                "origin": "https://movie.douban.com",
+                "pragma": "no-cache",
+                "priority": "u=1, i",
+                "referer": "https://movie.douban.com/explore",
+                "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": '"Windows"',
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-site",
+            }
         )
 
-    def __parse_movie_comments(self, response: Response, movie_id: str, start: int = 0):
-        """
-        解析电影评论页面
-
-        :param response: 页面响应
-        :type response: scrapy.http.Response
-        :param movie_id:
-        :type movie_id:
-        :param start:
-        :type start:
-        :return:
-        :rtype:
-        """
-        self.Log.info(f"解析电影评论: ID={movie_id}, start={start}, Status={response.status}")
-
-        try:
-            # 提取评论列表
-            comments = response.css("div.comment-item")
-            self.Log.info(f"找到 {len(comments)} 条评论")
-
-            for comment in comments:
-                item = MovieCommentItem()
-                item["movie_id"] = movie_id
-                item["comment_id"] = comment.css("::attr(data-cid)").get()
-                item["username"] = comment.css("span.comment-info a::text").get()
-                item["rating"] = self.__extract_comment_rating(comment)
-                item["content"] = comment.css("p.comment-content span.short::text").get()
-                item["useful_count"] = comment.css("span.votes::text").get()
-                item["comment_time"] = comment.css("span.comment-time::attr(title)").get()
-
-                yield item
-
-            # 判断是否需要继续翻页
-            has_next = response.css("div.paginator a.next").get() is not None
-
-            if has_next and start < 200:  # 限制最多爬取200条评论
-                next_start = start + 20
-                self.Log.info(f"继续获取下一页评论: start={next_start}")
-                yield from self.__request_movie_comments(movie_id, next_start)
-            else:
-                # 所有评论处理完成，标记任务为 COMPLETED
-                self.Log.info(f"电影 {movie_id} 所有数据处理完成")
-                self.Cache.mark_completed(movie_id)
-
-        except Exception as e:
-            self.Log.error(f"解析电影评论失败: ID={movie_id}, Error={e}")
-            self.Cache.mark_failed(movie_id, str(e))
+        return headers
 
     @staticmethod
-    def separate_movie_name(full_name) -> t.Tuple[str, str]:
+    def separate_movie_name(full_name: str) -> t.Tuple[str, str]:
+        """
+        分割电影名称为中文名和其他名称
+
+        :param full_name: 完整电影名称
+        :type full_name: str
+        :return: 中文名和其他名称的元组
+        :rtype: tuple
+        """
         parts = full_name.split()
         if not parts:
             return "", ""
@@ -398,7 +305,7 @@ class DoubanMovieSpider(scrapy.Spider):
         except Exception as error:
             raise error
 
-    def __extract_release_date(self, response: Response) -> datetime.date:
+    def __extract_release_date(self, response: scrapy.http.Response) -> datetime.date:
         """
         提取电影上映日期 (最早的日期)
 
@@ -413,7 +320,7 @@ class DoubanMovieSpider(scrapy.Spider):
         except Exception as error:
             raise error
 
-    def __extract_score(self, response: Response) -> float | str:
+    def __extract_score(self, response: scrapy.http.Response) -> float | str:
         """
         提取电影评分
 
@@ -429,7 +336,7 @@ class DoubanMovieSpider(scrapy.Spider):
             self.Log.error(f"解析电影评分失败: {err}")
             raise err
 
-    def __extract_directors(self, response: Response) -> t.List[t.Dict[str, str]]:
+    def __extract_directors(self, response: scrapy.http.Response) -> t.List[t.Dict[str, str]]:
         """
         获取导演列表 (返回包含artist_id和name的字典列表)
 
@@ -454,34 +361,38 @@ class DoubanMovieSpider(scrapy.Spider):
         self.Log.info(f"提取导演: {len(writers)} 人")
         return writers
 
-    def __extract_writers(self, response: Response) -> t.List[t.Dict[str, str]]:
+    def __extract_writers(self, response: scrapy.http.Response) -> t.List[t.Dict[str, str]]:
         """
         提取编剧列表
 
-        :param response: 页面响应
-        :type response: scrapy.http.Response
+        :param response:  页面响应
+        : type response: scrapy.http.Response
         :return: 编剧列表
         :rtype: list
         """
         writers = []
 
-        writer_elements = response.css("""#info span.pl:contains("编剧") ~ span.attrs a""")
-        writer_names = [elem.css("::text").get() for elem in writer_elements]
-        writer_urls = [elem.css("::attr(href)").get() for elem in writer_elements]
+        writer_section = response.xpath('//div[@id="info"]//span[@class="pl" and contains(text(), "编剧")]/following-sibling::span[@class="attrs"][1]')
 
-        for name, url in zip(writer_names, writer_urls):
-            artist_id = url.strip("/").split("/")[-1] if url else None
-            writers.append(
-                {
-                    "artist_id": artist_id,
-                    "name": name.strip() if name else name,
-                }
-            )
+        if writer_section:
+            writer_elements = writer_section.css("a")
+
+            for elem in writer_elements:
+                name = elem.css("::text").get()
+                url = elem.css("::attr(href)").get()
+
+                artist_id = url.strip("/").split("/")[-1] if url else None
+                writers.append(
+                    {
+                        "artist_id": artist_id,
+                        "name": name.strip() if name else name,
+                    }
+                )
 
         self.Log.info(f"提取编剧: {len(writers)} 人")
         return writers
 
-    def __extract_actors(self, response: Response) -> t.List[t.Dict[str, str]]:
+    def __extract_actors(self, response: scrapy.http.Response) -> t.List[t.Dict[str, str]]:
         """
         提取演员列表
 
@@ -507,7 +418,7 @@ class DoubanMovieSpider(scrapy.Spider):
         self.Log.info(f"提取演员: {len(actors)} 人")
         return actors
 
-    def __extract_types(self, response: Response) -> t.List[str]:
+    def __extract_types(self, response: scrapy.http.Response) -> t.List[str]:
         """
         提取电影类型
 
@@ -518,8 +429,15 @@ class DoubanMovieSpider(scrapy.Spider):
         """
         return response.css('span[property="v:genre"]::text').getall()
 
-    def __extract_countries(self, response: Response) -> list:
-        """提取电影国家/地区"""
+    def __extract_countries(self, response: scrapy.http.Response) -> t.List[str]:
+        """
+        提取电影国家/地区
+
+        :param response: 页面响应
+        :type response: scrapy.http.Response
+        :return: 国家/地区列表
+        :rtype: list
+        """
         countries = []
         info_section = response.css("div#info")
         info_text = info_section.css("::text").getall()
@@ -531,25 +449,25 @@ class DoubanMovieSpider(scrapy.Spider):
                 break
         return countries
 
-    def __extract_summary(self, response: Response) -> str:
-        """提取电影简介"""
+    def __extract_summary(self, response: scrapy.http.Response) -> str:
+        """
+        提取电影简介
+
+        :param response: 页面响应
+        :type response: scrapy.http.Response
+        :return: 电影简介
+        :rtype: str
+        """
         summary = response.css('span[property="v:summary"]::text').getall()
         return "".join(summary).strip() if summary else ""
 
-    def __extract_icon(self, response: Response) -> str:
-        """提取封面图片URL"""
+    def __extract_icon(self, response: scrapy.http.Response) -> str:
+        """
+        提取封面图片URL
+
+        :param response: 页面响应
+        :type response: scrapy.http.Response
+        :return: 封面图片URL
+        :rtype: str
+        """
         return response.css("div#mainpic img::attr(src)").get(default="")
-
-    def _handle_error(self, failure: Failure):
-        """统一错误处理"""
-        movie_id = failure.request.meta.get("movie_id")
-        self.Log.error(f"请求失败: {failure.request.url}, Error: {failure.value}")
-
-        if movie_id:
-            task = self.Cache.get_task(movie_id)
-            if task and task.retry_count < task.max_retries:
-                self.Log.warning(f"任务 {movie_id} 失败，将重试 ({task.retry_count + 1}/{task.max_retries})")
-                self.Cache.mark_failed(movie_id, str(failure.value))
-            else:
-                self.Log.error(f"任务 {movie_id} 超过最大重试次数，标记为失败")
-                self.Cache.mark_failed(movie_id, str(failure.value))

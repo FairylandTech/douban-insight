@@ -12,58 +12,42 @@ import typing as t
 from fairylandlogger import LogManager, Logger
 
 from fairylandfuture.database.mysql import MySQLOperator
+from fairylandfuture.structures.database import MySQLExecuteStructure
+from spider.spiders.douban.structures import MovieStructure
+
+Log: "Logger" = LogManager.get_logger("douban-dao", "douban")
 
 
 class MovieDAO:
     """电影数据访问对象"""
 
-    Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-dao", "douban")
-
     def __init__(self, db: "MySQLOperator"):
         self.db = db
 
-    def insert_movie(self, movie_data: dict) -> int:
+    def insert_movie(self, movie_data: "MovieStructure") -> int:
         """插入电影信息"""
 
-        with self.db.get_cursor() as cursor:
-            try:
-                cursor.execute(
-                    sql,
-                    (
-                        movie_data.get("movie_id"),
-                        movie_data.get("full_name"),
-                        movie_data.get("chinese_name"),
-                        movie_data.get("original_name"),
-                        movie_data.get("release_date"),
-                        movie_data.get("score"),
-                        movie_data.get("summary"),
-                    ),
-                )
-                self.Log.info(f"保存电影: {movie_data.get('full_name')} (ID: {movie_data.get('movie_id')})")
-
-                # 获取电影的自增ID
-                cursor.execute("SELECT id FROM tb_movie WHERE movie_id = %s", (movie_data.get("movie_id"),))
-                result = cursor.fetchone()
-                return result["id"] if result else None
-            except Exception as err:
-                self.Log.error(f"保存电影失败: {err}")
-                raise err
-
-    def get_movie_by_movie_id(self, movie_id: str) -> t.Optional[dict]:
-        """根据豆瓣电影ID获取电影"""
-        sql = "SELECT id, movie_id FROM tb_movie WHERE movie_id = %s AND deleted = 0"
-
-        with self.db.get_cursor() as cursor:
-            cursor.execute(sql, (movie_id,))
-            return cursor.fetchone()
+        try:
+            query = """
+                    insert into tb_movie
+                        (movie_id, full_name, chinese_name, original_name, release_date, score, summary)
+                    values
+                        (%(movie_id)s, %(full_name)s, %(chinese_name)s, %(original_name)s, %(release_date)s, %(score)s, %(summary)s); \
+                    """
+            args = movie_data.to_dict()
+            execute = MySQLExecuteStructure(query, args)
+            result = self.db.insert(execute)
+            Log.info(f"插入电影信息, BD Result: {result}")
+            Log.info(f"保存电影: {movie_data.full_name} ({movie_data.movie_id})")
+        except Exception as err:
+            Log.error(f"保存电影失败: {err}")
+            raise err
 
 
 class ArtistDAO:
     """演员数据访问对象"""
 
-    Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-dao", "douban")
-
-    def __init__(self, db: MySQLConnection):
+    def __init__(self, db: "MySQLOperator"):
         self.db = db
 
     def insert_artist(self, artist_data: dict) -> int:
@@ -92,14 +76,14 @@ class ArtistDAO:
                         artist_data.get("personage"),
                     ),
                 )
-                self.Log.debug(f"保存艺术家: {artist_data.get('name')}")
+                Log.debug(f"保存艺术家: {artist_data.get('name')}")
 
                 # 获取艺术家的自增ID
                 cursor.execute("SELECT id FROM tb_artist WHERE artist_id = %s", (artist_data.get("artist_id"),))
                 result = cursor.fetchone()
                 return result["id"] if result else None
             except Exception as err:
-                self.Log.error(f"保存艺术家失败: {err}")
+                Log.error(f"保存艺术家失败: {err}")
                 raise err
 
     def get_artist_by_artist_id(self, artist_id: str) -> t.Optional[dict]:
@@ -114,9 +98,7 @@ class ArtistDAO:
 class MovieTypeDAO:
     """电影类型数据访问对象"""
 
-    Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-dao", "douban")
-
-    def __init__(self, db: MySQLConnection):
+    def __init__(self, db: "MySQLOperator"):
         self.db = db
 
     def get_type_by_name(self, type_name: str) -> t.Optional[dict]:
@@ -138,18 +120,16 @@ class MovieTypeDAO:
         with self.db.get_cursor() as cursor:
             try:
                 cursor.execute(sql, (movie_id, type_id))
-                self.Log.debug(f"保存电影类型关系: movie_id={movie_id}, type_id={type_id}")
+                Log.debug(f"保存电影类型关系: movie_id={movie_id}, type_id={type_id}")
             except Exception as err:
-                self.Log.error(f"保存电影类型关系失败: {err}")
+                Log.error(f"保存电影类型关系失败: {err}")
                 raise err
 
 
 class MovieCountryDAO:
     """电影国家数据访问对象"""
 
-    Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-dao", "douban")
-
-    def __init__(self, db: MySQLConnection):
+    def __init__(self, db: "MySQLOperator"):
         self.db = db
 
     def get_country_by_name(self, country_name: str) -> t.Optional[dict]:
@@ -171,18 +151,16 @@ class MovieCountryDAO:
         with self.db.get_cursor() as cursor:
             try:
                 cursor.execute(sql, (movie_id, country_id))
-                self.Log.debug(f"保存电影国家关系: movie_id={movie_id}, country_id={country_id}")
+                Log.debug(f"保存电影国家关系: movie_id={movie_id}, country_id={country_id}")
             except Exception as err:
-                self.Log.error(f"保存电影国家关系失败: {err}")
+                Log.error(f"保存电影国家关系失败: {err}")
                 raise err
 
 
 class MovieRelationDAO:
     """电影人物关系数据访问对象"""
 
-    Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-dao", "douban")
-
-    def __init__(self, db: MySQLConnection):
+    def __init__(self, db: "MySQLOperator"):
         self.db = db
 
     def insert_director_relation(self, movie_id: int, artist_id: int):
@@ -196,9 +174,9 @@ class MovieRelationDAO:
         with self.db.get_cursor() as cursor:
             try:
                 cursor.execute(sql, (movie_id, artist_id))
-                self.Log.debug(f"保存电影导演关系: movie_id={movie_id}, artist_id={artist_id}")
+                Log.debug(f"保存电影导演关系: movie_id={movie_id}, artist_id={artist_id}")
             except Exception as err:
-                self.Log.error(f"保存电影导演关系失败: {err}")
+                Log.error(f"保存电影导演关系失败: {err}")
                 raise err
 
     def insert_writer_relation(self, movie_id: int, artist_id: int):
@@ -212,9 +190,9 @@ class MovieRelationDAO:
         with self.db.get_cursor() as cursor:
             try:
                 cursor.execute(sql, (movie_id, artist_id))
-                self.Log.debug(f"保存电影编剧关系: movie_id={movie_id}, artist_id={artist_id}")
+                Log.debug(f"保存电影编剧关系: movie_id={movie_id}, artist_id={artist_id}")
             except Exception as err:
-                self.Log.error(f"保存电影编剧关系失败: {err}")
+                Log.error(f"保存电影编剧关系失败: {err}")
                 raise err
 
     def insert_actor_relation(self, movie_id: int, artist_id: int):
@@ -228,18 +206,16 @@ class MovieRelationDAO:
         with self.db.get_cursor() as cursor:
             try:
                 cursor.execute(sql, (movie_id, artist_id))
-                self.Log.debug(f"保存电影演员关系: movie_id={movie_id}, artist_id={artist_id}")
+                Log.debug(f"保存电影演员关系: movie_id={movie_id}, artist_id={artist_id}")
             except Exception as err:
-                self.Log.error(f"保存电影演员关系失败: {err}")
+                Log.error(f"保存电影演员关系失败: {err}")
                 raise err
 
 
 class MovieCommentDAO:
     """电影评论数据访问对象"""
 
-    Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-dao", "douban")
-
-    def __init__(self, db: MySQLConnection):
+    def __init__(self, db: "MySQLOperator"):
         self.db = db
 
     def insert_comment(self, comment_data: dict) -> int:
@@ -258,7 +234,7 @@ class MovieCommentDAO:
                 movie_result = cursor.fetchone()
 
                 if not movie_result:
-                    self.Log.warning(f"电影不存在: {comment_data.get('movie_id')}")
+                    Log.warning(f"电影不存在: {comment_data.get('movie_id')}")
                     return None
 
                 movie_pk_id = movie_result["id"]
@@ -271,11 +247,11 @@ class MovieCommentDAO:
                         comment_data.get("rating"),
                     ),
                 )
-                self.Log.debug(f"保存电影评论: movie_id={comment_data.get('movie_id')}")
+                Log.debug(f"保存电影评论: movie_id={comment_data.get('movie_id')}")
 
                 # 获取评论的自增ID
                 comment_id = cursor.lastrowid
                 return comment_id
             except Exception as err:
-                self.Log.error(f"保存电影评论失败: {err}")
+                Log.error(f"保存电影评论失败: {err}")
                 raise err

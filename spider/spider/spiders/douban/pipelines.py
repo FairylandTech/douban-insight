@@ -17,6 +17,7 @@ from fairylandfuture.database.mysql import MySQLConnector, MySQLOperator
 from fairylandfuture.structures.database import MySQLExecuteStructure
 from spider.spiders.douban.config import DoubanConfig
 from spider.spiders.douban.items import MovieInfoTiem
+from spider.spiders.douban.dao import MovieDAO
 
 
 class DoubanMoviePipeline:
@@ -28,6 +29,8 @@ class DoubanMoviePipeline:
         self.config: t.Dict[str, t.Any] = DoubanConfig.load().get("mysql", {})
         self.__db_connector: t.Optional["MySQLConnector"] = None
         self.db: t.Optional["MySQLOperator"] = None
+
+        self.movie_dao: t.Optional["MovieDAO"] = None
 
     def open_spider(self, spider):
         """爬虫启动时连接数据库"""
@@ -41,6 +44,8 @@ class DoubanMoviePipeline:
             )
             self.Log.info("数据库连接成功")
             self.db: "MySQLOperator" = MySQLOperator(connector=self.__db_connector)
+
+            self.movie_dao = MovieDAO(db=self.db)
         except Exception as err:
             self.Log.error(f"数据库连接失败: {err}")
             raise err

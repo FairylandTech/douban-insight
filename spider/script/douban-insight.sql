@@ -23,10 +23,7 @@ create table if not exists tb_artist
 (
     id         integer primary key auto_increment,
     artist_id  varchar(32) unique                                             not null,
-    name       varchar(128) unique                                            not null,
-    birthday   date,
-    photo      varchar(255),
-    personage  text,
+    name       varchar(128)                                                   not null,
     created_at datetime default current_timestamp                             not null,
     updated_at datetime default current_timestamp on update current_timestamp not null,
     deleted    boolean  default false                                         not null

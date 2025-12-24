@@ -23,7 +23,7 @@ BOT_NAME = "spider"
 
 SPIDER_MODULES = [
     "spider.spiders",
-    "spider.spiders.douban",
+    # "spider.spiders.douban",
 ]
 NEWSPIDER_MODULE = "spider.spiders"
 
@@ -39,5 +39,5 @@ FEED_EXPORT_ENCODING = "UTF-8"
 
 ITEM_PIPELINES = {
     # 处理豆瓣电影数据的 Pipeline
-    "spider.spiders.douban.pipelines.DoubanMoviePipeline": 300,
+    # "spider.spiders.douban.pipelines.DoubanMoviePipeline": 300,
 }

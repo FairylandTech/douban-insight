@@ -32,8 +32,8 @@ class DoubanCacheManager(RedisCacheManager):
 
         client = Redis(
             host=config.get("host"),
-            port=config.get("port"),
-            db=config.get("db"),
+            port=int(config.get("port", 6379)),
+            db=int(config.get("db", 0)),
             password=config.get("password"),
         )
 
@@ -41,9 +41,9 @@ class DoubanCacheManager(RedisCacheManager):
             client.ping()
             self.Log.info("成功连接到 Redis 服务器")
             return client
-        except Exception as err:
-            self.Log.error(f"连接到 Redis 服务器失败: {err}")
-            raise err
+        except Exception as error:
+            self.Log.error(f"连接到 Redis 服务器失败: {error}")
+            raise error
 
     def save_task(self, task: "MovieTask"):
         try:
@@ -57,8 +57,8 @@ class DoubanCacheManager(RedisCacheManager):
             self.Log.info(f"保存任务 {key} 到缓存")
             self.set(key=key, value=json.dumps(task_data, ensure_ascii=False, separators=(",", ":")))
             return True
-        except Exception as err:
-            self.Log.error(f"保存任务 {task.movie_id} 失败: {err}")
+        except Exception as error:
+            self.Log.error(f"保存任务 {task.movie_id} 失败: {error}")
             return False
 
     def get_task(self, movie_id: str) -> t.Optional["MovieTask"]:
@@ -75,8 +75,8 @@ class DoubanCacheManager(RedisCacheManager):
             task_data["status"] = SpiderStatus(task_data["status"])
             self.Log.info(f"{movie_id} 任务数据: {task_data}")
             return MovieTask(**task_data)
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            print(f"解析任务数据失败 {movie_id}: {e}")
+        except (json.JSONDecodeError, KeyError, ValueError) as error:
+            print(f"解析任务数据失败 {movie_id}: {error}")
             return None
 
     def mark_processing(self, movie_id: str) -> bool:
@@ -85,18 +85,14 @@ class DoubanCacheManager(RedisCacheManager):
         task.status = SpiderStatus.PROCESSING
         return self.save_task(task)
 
-    def mark_parsed_info(self, movie_id: str) -> bool:
+    def mark_parsed(self, movie_id: str) -> bool:
         self.Log.info(f"标记任务 {movie_id} 为信息已解析")
         task = self.get_task(movie_id)
-        task.status = SpiderStatus.PARSED_INFO
-        return self.save_task(task)
-
-    def mark_parsed_comment(self, movie_id: str) -> bool:
-        task = self.get_task(movie_id)
-        task.status = SpiderStatus.PARSED_COMMENT
+        task.status = SpiderStatus.PARSED
         return self.save_task(task)
 
     def mark_completed(self, movie_id: str, data: dict = None) -> bool:
+        self.Log.info(f"标记任务 {movie_id} 为已完成")
         task = self.get_task(movie_id)
         if not task:
             task = MovieTask(movie_id=movie_id)
@@ -106,6 +102,7 @@ class DoubanCacheManager(RedisCacheManager):
         return self.save_task(task)
 
     def mark_failed(self, movie_id: str, error_msg: str) -> bool:
+        self.Log.info(f"标记任务 {movie_id} 为失败，错误信息: {error_msg}")
         task = self.get_task(movie_id)
         if not task:
             task = MovieTask(movie_id=movie_id)
@@ -119,7 +116,7 @@ class DoubanCacheManager(RedisCacheManager):
         pattern = self._get_key("task", "*")
         keys = self.redis.keys(pattern)
 
-        stats = {"total": 0, "pending": 0, "processing": 0, "completed": 0, "failed": 0}
+        stats = {"total": 0, "pending": 0, "processing": 0, "parsed": 0, "completed": 0, "failed": 0}
 
         for key in keys:
             task = self.get_task(key.split(":")[-1])
@@ -156,3 +153,6 @@ class DoubanCacheManager(RedisCacheManager):
             tasks.append(task)
 
         return tasks
+
+
+RedisManager = DoubanCacheManager()
