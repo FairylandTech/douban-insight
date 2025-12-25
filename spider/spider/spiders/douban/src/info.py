@@ -71,40 +71,50 @@ class DoubanMovieSpider(scrapy.Spider):
         # 分页拉取推荐列表
         start = int(self.cache.get("douban:movie:recommend:start") or "0")
         count = 20
-        max_pages = 100  # 安全阈值，避免无限抓取
-        for page in range(max_pages):
-            url = "https://m.douban.com/rexxar/api/v2/movie/recommend"
-            params = {
-                "refresh": "0",
-                "start": str(start),
-                "count": str(count),
-                "selected_categories": {},
-                "uncollect": False,
-                "score_range": "0,10",
-                "tags": "",
-                "ck": "A_Ee",
-            }
-            url_with_params = f"{url}?{urlencode(params, doseq=True)}"
-            self.Log.info(f"请求电影ID列表: start={start}, count={count}, page={page+1}")
-            yield scrapy.Request(
-                method="GET",
-                url=url_with_params,
-                headers=self.made_headers(),
-                cookies=self.cookies,
-                callback=self.__parse_movie_ids_page,
-                dont_filter=True,
-                meta={"start": start, "count": count, "page": page},
-            )
-            # 预先推进下一页的start（也可在解析后推进）
-            start += count
-            self.cache.set("douban:movie:recommend:start", str(start))
+        yield from self.__request_movie_recommend(start, count, 0)
+
+    def __request_movie_recommend(self, start: int, count: int, page: int):
+        """
+        请求电影推荐列表
+
+        :param start: 开始索引
+        :param count: 每次请求数量
+        :param page: 当前页码
+        """
+        url = "https://m.douban.com/rexxar/api/v2/movie/recommend"
+        params = {
+            "refresh": "0",
+            "start": str(start),
+            "count": str(count),
+            "selected_categories": {},
+            "uncollect": False,
+            "score_range": "0,10",
+            "tags": "",
+            "ck": "A_Ee",
+        }
+        url_with_params = f"{url}?{urlencode(params, doseq=True)}"
+        self.Log.info(f"请求电影ID列表: start={start}, count={count}, page={page+1}")
+        yield scrapy.Request(
+            method="GET",
+            url=url_with_params,
+            headers=self.made_headers(),
+            cookies=self.cookies,
+            callback=self.__parse_movie_ids_page,
+            dont_filter=True,
+            meta={"start": start, "count": count, "page": page},
+        )
 
     def __parse_movie_ids_page(self, response: scrapy.http.Response):
         self.Log.debug(f"电影ID API响应状态码: {response.status}")
         try:
             data: t.Dict[str, t.Any] = json.loads(response.text)
             items = data.get("items", []) or []
-            self.Log.info(f"获取到 {len(items)} 条数据，start={response.meta.get('start')}")
+
+            start = response.meta.get("start")
+            count = response.meta.get("count")
+            page = response.meta.get("page")
+
+            self.Log.info(f"获取到 {len(items)} 条数据，start={start}")
 
             if not items:
                 self.Log.info("当前页为空，停止分页。")
@@ -124,6 +134,16 @@ class DoubanMovieSpider(scrapy.Spider):
                 task = MovieTask(movie_id=movie_id, status=SpiderStatus.PENDING)
                 self.cache.save_task(task)
                 yield from self.__request_movie_info(movie_id)
+
+            # 成功解析当前页后，推进 start 并请求下一页
+            new_start = start + count
+            self.cache.set("douban:movie:recommend:start", str(new_start))
+
+            if page < 100:  # 安全阈值，避免无限抓取
+                yield from self.__request_movie_recommend(new_start, count, page + 1)
+            else:
+                self.Log.info("达到最大页数限制，停止分页。")
+
         except json.JSONDecodeError as e:
             self.Log.error(f"解析电影ID列表失败: {e}")
         except Exception as e:
