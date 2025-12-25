@@ -168,6 +168,30 @@ class MovieTypeDAO:
     def __init__(self, db: "PostgreSQLOperator"):
         self.db = db
 
+    def get_id_by_name(self, type_name: str) -> t.Optional[int]:
+        query = """
+                select id
+                from movie.tb_movie_type
+                where name = %(type_name)s
+                  and deleted is false;
+                """
+        params = {"type_name": type_name}
+        query = DoubanUtils.query_sql_clean(query)
+        Log.debug(f"查询电影类型ID, Query: {query}, Params: {params}")
+
+        execute = PostgreSQLExecuteStructure(query, params)
+
+        try:
+            result = self.db.select(execute)
+            Log.info(f"查询电影类型ID, BD Result: {result}")
+            if result and len(result) > 0:
+                return result[0].id
+            else:
+                return None
+        except Exception as error:
+            Log.error(f"查询电影类型ID失败: {error}")
+            raise error
+
     def insert_movie_type_relation(self, movie_id: str, type_name: str):
         """插入电影类型关系"""
         query = """
