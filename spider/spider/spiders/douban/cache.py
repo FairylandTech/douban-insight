@@ -152,5 +152,22 @@ class DoubanCacheManager(RedisCacheManager):
 
         return tasks
 
+    def save_db_movie_ids(self, ids: t.List[str]):
+        key = self._get_key("douban:movie:db:movie_ids")
+        self.Log.info(f"保存数据库电影ID列表到缓存: {key}")
+        self.redis.sadd(key, *ids)
+
+    def get_db_movie_ids(self) -> t.Set[str]:
+        key = self._get_key("douban:movie:db:movie_ids")
+        self.Log.info(f"从缓存获取数据库电影ID列表: {key}")
+        ids = self.redis.smembers(key)
+
+        return {movie_id.decode("UTF-8") for movie_id in ids}
+
+    def add_to_db_movie_ids(self, movie_id: str):
+        key = self._get_key("douban:movie:db:movie_ids")
+        self.Log.info(f"添加电影ID {movie_id} 到数据库电影ID列表缓存: {key}")
+        self.redis.sadd(key, movie_id)
+
 
 RedisManager = DoubanCacheManager()

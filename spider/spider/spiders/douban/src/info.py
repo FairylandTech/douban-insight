@@ -18,9 +18,12 @@ import scrapy
 import unicodedata
 from fairylandlogger import LogManager, Logger
 
+from fairylandfuture.database.postgresql import PostgreSQLOperator
 from fairylandfuture.helpers.json.serializer import JsonSerializerHelper
 from spider.enums import SpiderStatus
 from spider.spiders.douban.cache import DoubanCacheManager, RedisManager
+from spider.spiders.douban.dao import MovieDAO
+from spider.spiders.douban.database import DatabaseManager, PostgreSQLManager
 from spider.spiders.douban.items import MovieInfoTiem
 from spider.spiders.douban.structure import MovieTask
 from spider.spiders.douban.utils import DoubanUtils
@@ -28,12 +31,13 @@ from spider.spiders.douban.utils import DoubanUtils
 
 class DoubanMovieSpider(scrapy.Spider):
     """
-    获取电影信息和评论
+    获取电影信息
 
     """
 
     Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-spider", "douban")
-    Cache: t.ClassVar["DoubanCacheManager"] = RedisManager
+    cache: t.ClassVar["DoubanCacheManager"] = RedisManager
+    database: t.ClassVar["DatabaseManager"] = PostgreSQLManager
 
     name = "douban-movie-info"
     allowed_domains = ["douban.com", "m.douban.com"]
@@ -46,91 +50,65 @@ class DoubanMovieSpider(scrapy.Spider):
         }
         self.cookies = DoubanUtils.load_cookies_from_file("config/douban.cookies")
 
+        self.movie_dao = MovieDAO(PostgreSQLOperator(self.database.connector))
+
     def start_requests(self):
-        """
-        处理缓存任务或获取新的电影ID
+        # 先同步数据库已有ID到缓存
+        db_movie_ids = self.movie_dao.get_movie_id_all()
+        self.Log.info(f"数据库中已存在的电影ID数量: {len(db_movie_ids)}")
+        if db_movie_ids:
+            self.cache.save_db_movie_ids(db_movie_ids)
 
-        :return:
-        :rtype:
-        """
-        tasks: t.List["MovieTask"] = self.Cache.get_tasks()
-        self.Log.info(f"缓存中待处理任务数量: {len(tasks)}")
-
-        # 处理缓存中的任务
-        exec_cache_task = False
-        for task in tasks:
-            if task.status != SpiderStatus.COMPLETED:
-                exec_cache_task = True
-                self.Log.info(f"继续处理任务(电影信息/解析电影信息): {task.movie_id}")
+        # 先处理缓存中的任务
+        tasks: t.List["MovieTask"] = self.cache.get_tasks()
+        tasks = [task for task in tasks if task.status != SpiderStatus.COMPLETED]
+        if tasks:
+            self.Log.info(f"缓存中待处理任务数量: {len(tasks)}")
+            for task in tasks:
                 yield from self.__request_movie_info(task.movie_id)
+            return
 
-        # 如果没有待处理任务, 则获取新的电影ID列表
-        if not exec_cache_task:
-            self.Log.info("没有待处理任务，开始获取新的电影ID列表")
-            yield from self.__request_movie_ids()
+        # 分页拉取推荐列表
+        start = int(self.cache.get("douban:movie:recommend:start") or "0")
+        count = 20
+        max_pages = 100  # 安全阈值，避免无限抓取
+        for page in range(max_pages):
+            url = "https://m.douban.com/rexxar/api/v2/movie/recommend"
+            params = {
+                "refresh": "0",
+                "start": str(start),
+                "count": str(count),
+                "selected_categories": {},
+                "uncollect": False,
+                "score_range": "0,10",
+                "tags": "",
+                "ck": "A_Ee",
+            }
+            url_with_params = f"{url}?{urlencode(params, doseq=True)}"
+            self.Log.info(f"请求电影ID列表: start={start}, count={count}, page={page+1}")
+            yield scrapy.Request(
+                method="GET",
+                url=url_with_params,
+                headers=self.made_headers(),
+                cookies=self.cookies,
+                callback=self.__parse_movie_ids_page,
+                dont_filter=True,
+                meta={"start": start, "count": count, "page": page},
+            )
+            # 预先推进下一页的start（也可在解析后推进）
+            start += count
+            self.cache.set("douban:movie:recommend:start", str(start))
 
-    def __request_movie_ids(self):
-        """
-        请求电影ID列表
-
-        :return: Scrapy 请求生成器
-        :rtype: t.Generator[scrapy.Request, t.Any, None]
-        """
-        recommend_start_index: str | None = self.Cache.get("douban:movie:recommend:start")
-        start_index = recommend_start_index if recommend_start_index else "0"
-
-        self.Log.info(f"获取推荐电影列表，起始索引: {start_index}")
-
-        url = "https://m.douban.com/rexxar/api/v2/movie/recommend"
-        params = {
-            "refresh": "0",
-            "start": start_index,
-            "count": "20",
-            "selected_categories": {},
-            "uncollect": False,
-            "score_range": "0,10",
-            "tags": "",
-            "ck": "kfPA",
-        }
-
-        url_with_params = f"{url}?{urlencode(params, doseq=True)}"
-
-        self.Log.info(f"请求电影ID列表: {url_with_params}")
-
-        yield scrapy.Request(
-            method="GET",
-            url=url_with_params,
-            headers=self.made_headers(),
-            cookies=self.cookies,
-            callback=self.__parse_movie_ids,
-            dont_filter=True,
-            # errback=self._handle_error,
-        )
-
-    def __parse_movie_ids(self, response: scrapy.http.Response):
-        """
-        解析电影ID列表
-
-        :param response: 电影ID API响应
-        :type response: scrapy.http.Response
-        :return: 生成器，包含电影信息请求
-        :rtype: t.Generator[scrapy.Request, t.Any, None]
-        """
+    def __parse_movie_ids_page(self, response: scrapy.http.Response):
         self.Log.debug(f"电影ID API响应状态码: {response.status}")
-
         try:
             data: t.Dict[str, t.Any] = json.loads(response.text)
+            items = data.get("items", []) or []
+            self.Log.info(f"获取到 {len(items)} 条数据，start={response.meta.get('start')}")
 
-            # 更新起始索引
-            current_start = data.get("start", 0)
-            count = data.get("count", 0)
-            next_start = current_start + count
-            self.Cache.set("douban:movie:recommend:start", str(next_start))
-            self.Log.info(f"已更新起始索引: {next_start}")
-
-            # 处理电影列表
-            items = data.get("items", [])
-            self.Log.info(f"获取到 {len(items)} 条数据")
+            if not items:
+                self.Log.info("当前页为空，停止分页。")
+                return
 
             for item in items:
                 if item.get("type") != "movie":
@@ -139,15 +117,12 @@ class DoubanMovieSpider(scrapy.Spider):
 
                 movie_id: str = item.get("id")
                 movie_name: str = item.get("title")
-                self.Log.info(f"处理电影: {movie_name} (ID: {movie_id})")
+                if DoubanUtils.check_id_in_cache(movie_id, self.cache.get_db_movie_ids()):
+                    self.Log.info(f"电影ID已存在于数据库，跳过: {movie_id}")
+                    continue
 
-                task = MovieTask(
-                    movie_id=movie_id,
-                    status=SpiderStatus.PENDING,
-                )
-                self.Cache.save_task(task)
-                self.Log.info(f"创建新任务成功: {task}")
-
+                task = MovieTask(movie_id=movie_id, status=SpiderStatus.PENDING)
+                self.cache.save_task(task)
                 yield from self.__request_movie_info(movie_id)
         except json.JSONDecodeError as e:
             self.Log.error(f"解析电影ID列表失败: {e}")
@@ -166,7 +141,7 @@ class DoubanMovieSpider(scrapy.Spider):
         movie_url = f"https://movie.douban.com/subject/{movie_id}/"
         self.Log.info(f"请求电影信息: ID={movie_id}, URL={movie_url}")
 
-        # self.Cache.mark_processing(movie_id)
+        self.cache.mark_processing(movie_id)
 
         yield scrapy.Request(
             url=movie_url,
@@ -222,16 +197,15 @@ class DoubanMovieSpider(scrapy.Spider):
                 icon=icon,
             )
 
-            self.Cache.mark_parsed(movie_id)
+            self.cache.mark_parsed(movie_id)
 
             self.Log.info(f"成功解析电影信息: ID={movie_id}, Data={JsonSerializerHelper.serialize(item)}")
 
             yield item
-
         except Exception as error:
             self.Log.error(f"解析电影信息失败: ID={movie_id}, Error={error}")
             self.Log.error(traceback.format_exc())
-            self.Cache.mark_failed(movie_id, str(error))
+            self.cache.mark_failed(movie_id, str(error))
 
     def made_headers(self) -> t.Dict[str, str]:
         """
@@ -310,9 +284,9 @@ class DoubanMovieSpider(scrapy.Spider):
         except Exception as error:
             raise error
 
-    def __extract_release_date(self, response: scrapy.http.Response) -> datetime.date:
+    def __extract_release_date(self, response: scrapy.http.Response) -> t.Optional[datetime.date]:
         """
-        提取电影上映日期 (最早的日期)
+        提取电影上映日期 (依次尝试多个日期，直到解析成功)
 
         :param response: 页面响应
         :type response: scrapy.http.Response
@@ -320,12 +294,58 @@ class DoubanMovieSpider(scrapy.Spider):
         :rtype: datetime.date
         """
         self.Log.info("提取电影上映日期")
-        try:
-            content = self.__wrapper_css(response.css("""span[property="v:initialReleaseDate"]::text"""))
-            self.Log.info(f"提取上映日期内容: {content}")
-            return datetime.datetime.strptime(content[:10], "%Y-%m-%d").date()
-        except Exception as error:
-            raise error
+
+        # 获取所有上映日期文本
+        date_texts = response.css("""span[property="v:initialReleaseDate"]::text""").getall()
+        self.Log.info(f"提取到所有上映日期: {date_texts}")
+
+        if not date_texts:
+            raise ValueError("未找到上映日期信息")
+
+        for i, date_text in enumerate(date_texts, 1):
+            try:
+                date_text = date_text.strip()
+                self.Log.info(f"尝试解析第{i}个日期: {date_text}")
+
+                if not date_text:
+                    continue
+
+                # 提取括号前的日期部分
+                if "(" in date_text:
+                    date_part = date_text.split("(")[0].strip()
+                else:
+                    date_part = date_text
+
+                # 根据日期部分的格式进行解析
+                if len(date_part) == 4 and date_part.isdigit():
+                    # 只有年份，如"2025"
+                    year = int(date_part)
+                    parsed_date = datetime.date(year, 1, 1)
+                elif len(date_part) >= 8:  # 完整日期格式，至少"2025-1-1"
+                    # 标准化日期格式
+                    parts = date_part.split("-")
+                    if len(parts) == 3:
+                        year = parts[0]
+                        month = parts[1].zfill(2)
+                        day = parts[2].zfill(2)
+                        date_str = f"{year}-{month}-{day}"
+                        parsed_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                    else:
+                        raise ValueError(f"日期格式不正确: {date_part}")
+                else:
+                    raise ValueError(f"无法识别的日期格式: {date_part}")
+
+                self.Log.info(f"第{i}个日期解析成功: {parsed_date}")
+                return parsed_date
+
+            except Exception as e:
+                self.Log.warning(f"第{i}个日期解析失败: {date_text}, 错误: {e}")
+                continue
+
+        # 如果所有日期都解析失败
+        error_msg = f"所有上映日期解析都失败: {date_texts}"
+        self.Log.error(error_msg)
+        return None
 
     def __extract_score(self, response: scrapy.http.Response) -> float | str:
         """

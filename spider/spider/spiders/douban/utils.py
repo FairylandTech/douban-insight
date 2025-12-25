@@ -49,3 +49,7 @@ class DoubanUtils:
         :rtype: str
         """
         return " ".join(query.split())
+
+    @classmethod
+    def check_id_in_cache(cls, movie_id: str, cache_data: t.Set[str]):
+        return movie_id in cache_data

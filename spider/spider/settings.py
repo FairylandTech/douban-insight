@@ -16,10 +16,30 @@ scrapy_configure_logging(install_root_handler=False)
 for name in ("scrapy", "twisted", "w3lib", "urllib3", "py.warnings", "asyncio"):
     logging.getLogger(name).propagate = False
 
+BOT_NAME = "spider"
+
 LOG_ENABLED = True
 LOG_LEVEL = "DEBUG"
 
-BOT_NAME = "spider"
+ADDONS = {}
+
+ROBOTSTXT_OBEY = False
+
+CONCURRENT_REQUESTS_PER_DOMAIN = 1
+
+DOWNLOAD_DELAY = 10
+DOWNLOAD_TIMEOUT = 10
+RANDOMIZE_DOWNLOAD_DELAY = True
+
+AUTOTHROTTLE_ENABLED = True
+
+RETRY_ENABLED = True
+RETRY_TIMES = 2
+RETRY_HTTP_CODES = [500, 502, 503, 504, 400, 403, 404, 429]
+
+FEED_EXPORT_ENCODING = "UTF-8"
+
+REDIRECT_ENABLED = False
 
 SPIDER_MODULES = [
     "spider.spiders",
@@ -27,17 +47,12 @@ SPIDER_MODULES = [
 ]
 NEWSPIDER_MODULE = "spider.spiders"
 
-ADDONS = {}
-
-ROBOTSTXT_OBEY = True
-
-CONCURRENT_REQUESTS_PER_DOMAIN = 1
-
-DOWNLOAD_DELAY = 5
-
-FEED_EXPORT_ENCODING = "UTF-8"
-
 ITEM_PIPELINES = {
     # 处理豆瓣电影数据的 Pipeline
-    "spider.spiders.douban.pipelines.DoubanMoviePipeline": 300,
+    "spider.spiders.douban.pipelines.DoubanMoviePipeline": 0,
+}
+
+DOWNLOADER_MIDDLEWARES = {
+    # 添加代理中间件
+    "spider.middlewares.SpiderProxyMiddleware": 0,
 }

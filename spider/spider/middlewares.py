@@ -1,100 +1,63 @@
-# Define here the models for your spider middleware
-#
-# See documentation in:
-# https://docs.scrapy.org/en/latest/topics/spider-middleware.html
+# coding: UTF-8
 
-from scrapy import signals
+import typing as t
+import scrapy
 
-
-# useful for handling different item types with a single interface
+import requests
+from fairylandlogger import Logger, LogManager
 
 
-class SpiderSpiderMiddleware:
-    # Not all methods need to be defined. If a method is not defined,
-    # scrapy acts as if the spider middleware does not modify the
-    # passed objects.
+class SpiderProxyMiddleware:
+    Log: t.ClassVar["Logger"] = LogManager.get_logger("spider-middleware", "scrapy")
 
-    @classmethod
-    def from_crawler(cls, crawler):
-        # This method is used by Scrapy to create your spiders.
-        s = cls()
-        crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
-        return s
+    def process_request(self, request: scrapy.Request, spider: scrapy.Spider):
+        self.Log.debug(f"获取代理处理请求: {request.url}")
+        if request.url.startswith("http://"):
+            proxy = self.__get_proxy(typed=1)
+            if proxy:
+                request.meta["proxy"] = proxy
+        elif request.url.startswith("https://"):
+            proxy = self.__get_proxy(typed=2)
+            if proxy:
+                request.meta["proxy"] = proxy
+        else:
+            self.Log.warning(f"无法识别请求协议: {request.url}")
 
-    def process_spider_input(self, response, spider):
-        # Called for each response that goes through the spider
-        # middleware and into the spider.
+    def __get_proxy(self, typed: int) -> t.Optional[str]:
+        response = requests.get(
+            url=f"http://api.shenlongip.com/ip?key=d9y2e6o6&protocol={typed}&mr=1&pattern=json&need=1111&count=1&sign=ab79686e9107b4f6b1ab6d8e25529091",
+            timeout=10,
+        )
+        response.raise_for_status()
+        data: t.Dict[str, int | t.List[t.Dict[str, int | str]]] = response.json()
 
-        # Should return None or raise an exception.
-        return None
+        self.Log.debug(f"代理IP响应数据: {data}")
 
-    def process_spider_output(self, response, result, spider):
-        # Called with the results returned from the Spider, after
-        # it has processed the response.
+        ip = data.get("data", [{}])[0].get("ip", "")
+        port = data.get("data", [{}])[0].get("port", 0)
 
-        # Must return an iterable of Request, or item objects.
-        for i in result:
-            yield i
+        if ip and port:
+            proxies = {
+                "http": f"http://{ip}:{port}",
+                "https": f"https://{ip}:{port}",
+                "socks5": f"socks5://{ip}:{port}",
+            }
 
-    def process_spider_exception(self, response, exception, spider):
-        # Called when a spider or process_spider_input() method
-        # (from other spider middleware) raises an exception.
+            if typed == 2:
+                proxy = proxies.get("https", "")
+            else:
+                proxy = proxies.get("http", "")
+            self.Log.info(f"获取到代理IP: {proxy}")
 
-        # Should return either None or an iterable of Request or item objects.
-        pass
+            return proxy
 
-    async def process_start(self, start):
-        # Called with an async iterator over the spider start() method or the
-        # maching method of an earlier spider middleware.
-        async for item_or_request in start:
-            yield item_or_request
-
-    def spider_opened(self, spider):
-        spider.logger.info("Spider opened: %s" % spider.name)
-
-
-class SpiderDownloaderMiddleware:
-    # Not all methods need to be defined. If a method is not defined,
-    # scrapy acts as if the downloader middleware does not modify the
-    # passed objects.
-
-    @classmethod
-    def from_crawler(cls, crawler):
-        # This method is used by Scrapy to create your spiders.
-        s = cls()
-        crawler.signals.connect(s.spider_opened, signal=signals.spider_opened)
-        return s
-
-    def process_request(self, request, spider):
-        # Called for each request that goes through the downloader
-        # middleware.
-
-        # Must either:
-        # - return None: continue processing this request
-        # - or return a Response object
-        # - or return a Request object
-        # - or raise IgnoreRequest: process_exception() methods of
-        #   installed downloader middleware will be called
-        return None
-
-    def process_response(self, request, response, spider):
-        # Called with the response returned from the downloader.
-
-        # Must either;
-        # - return a Response object
-        # - return a Request object
-        # - or raise IgnoreRequest
-        return response
-
-    def process_exception(self, request, exception, spider):
-        # Called when a download handler or a process_request()
-        # (from other downloader middleware) raises an exception.
-
-        # Must either:
-        # - return None: continue processing this exception
-        # - return a Response object: stops process_exception() chain
-        # - return a Request object: stops process_exception() chain
-        pass
-
-    def spider_opened(self, spider):
-        spider.logger.info("Spider opened: %s" % spider.name)
+            # test_response = requests.get("http://myip.ipip.net/", proxies=proxies, timeout=5)
+            # if test_response.status_code != 200:
+            #     self.Log.error(f"代理IP测试失败，状态码: {test_response.status_code}")
+            #     return self.__get_proxy(typed=typed)
+            # else:
+            #     self.Log.info(f"代理IP测试成功: {test_response.text.strip()}")
+            #     return proxy
+        else:
+            self.Log.error("未能获取到有效的代理IP")
+            return None

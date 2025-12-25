@@ -39,14 +39,14 @@ def main():
 
     params = {
         "refresh": "0",
-        "start": "20",
+        "start": "1260",
         "count": "20",
         # "selected_categories": {"类型": "喜剧"},
         "selected_categories": {},
         "uncollect": False,
         "score_range": "0,10",
         "tags": "",
-        "ck": "kfPA",
+        "ck": "A_Ee",
     }
 
     response = session.get(
@@ -58,6 +58,8 @@ def main():
     response.raise_for_status()
 
     print(response.json())
+
+    print(response.json().get("items"))
 
     ids = [i.get("id") for i in response.json().get("items")]
     print(ids)

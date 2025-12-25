@@ -194,12 +194,12 @@ class PostgreSQLOperator(AbstractPostgreSQLOperator):
             self.connector.cursor.execute(struct.query, struct.vars)
             data = self.connector.cursor.fetchall()
             self.connector.connection.commit()
-            self.connector.close()
+            self.connector.cursor.close()
 
             return tuple(data) if data else True
         except Exception as err:
             self.connector.connection.rollback()
-            self.connector.close()
+            self.connector.cursor.close()
             raise err
 
     def executemany(self, struct: PostgreSQLExecuteStructure, /) -> bool:
