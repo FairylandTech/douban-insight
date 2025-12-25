@@ -42,6 +42,16 @@ class DoubanMovieSpider(scrapy.Spider):
     name = "douban-movie-info"
     allowed_domains = ["douban.com", "m.douban.com"]
 
+    custom_settings = {
+        "CONCURRENT_REQUESTS": 1,
+        "CONCURRENT_REQUESTS_PER_DOMAIN": 1,
+        "CONCURRENT_REQUESTS_PER_IP": 1,
+        "REACTOR_THREADPOOL_MAXSIZE": 1,
+        "DOWNLOAD_DELAY": 0.5,  # 适当延迟，避免过快
+        "AUTOTHROTTLE_ENABLED": False,  # 可按需改为 True
+        "SCHEDULER_DEBUG": False,
+    }
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.headers = {
