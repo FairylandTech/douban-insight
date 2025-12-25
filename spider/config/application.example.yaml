@@ -10,9 +10,9 @@ douban:
     port: 6379
     db: 15
     password: xxxx
-  mysql:
+  postgresql:
     host: localhost
-    port: 3306
+    port: 5432
     database: database
     user: root
     password: root

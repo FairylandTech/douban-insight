@@ -14,6 +14,7 @@ from dataclasses import asdict
 from fairylandlogger import LogManager, Logger
 from redis import Redis
 
+from fairylandfuture.helpers.json.serializer import JsonSerializerHelper
 from spider.cache import RedisCacheManager
 from spider.enums import SpiderStatus
 from spider.spiders.douban.config import DoubanConfig
@@ -83,30 +84,27 @@ class DoubanCacheManager(RedisCacheManager):
         self.Log.info(f"标记任务 {movie_id} 为处理中")
         task = self.get_task(movie_id)
         task.status = SpiderStatus.PROCESSING
+        task.error_msg = ""
         return self.save_task(task)
 
     def mark_parsed(self, movie_id: str) -> bool:
         self.Log.info(f"标记任务 {movie_id} 为信息已解析")
         task = self.get_task(movie_id)
         task.status = SpiderStatus.PARSED
+        task.error_msg = ""
         return self.save_task(task)
 
     def mark_completed(self, movie_id: str, data: dict = None) -> bool:
         self.Log.info(f"标记任务 {movie_id} 为已完成")
         task = self.get_task(movie_id)
-        if not task:
-            task = MovieTask(movie_id=movie_id)
-
         task.status = SpiderStatus.COMPLETED
-        task.data = data
+        task.error_msg = ""
+        task.data = JsonSerializerHelper.serialize(data)
         return self.save_task(task)
 
     def mark_failed(self, movie_id: str, error_msg: str) -> bool:
         self.Log.info(f"标记任务 {movie_id} 为失败，错误信息: {error_msg}")
         task = self.get_task(movie_id)
-        if not task:
-            task = MovieTask(movie_id=movie_id)
-
         task.status = SpiderStatus.FAILED
         task.error_msg = error_msg
         task.retry_count += 1

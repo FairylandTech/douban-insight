@@ -84,10 +84,13 @@ class PostgreSQLConnector:
         self.__password = password
         self.__database = database
         self.__schema = schema
+        self.__timezone = "Asia/Shanghai"
         self.__dsn = f"host={self.__host} port={self.__port} user={self.__user} password={self.__password} dbname={self.__database}"
 
         if self.__schema:
-            self.__dsn = " ".join((self.__dsn, f"options='-c search_path={self.__schema}'"))
+            self.__dsn = " ".join((self.__dsn, f"options='-c timezone={self.__timezone} -c search_path={self.__schema}'"))
+        else:
+            self.__dsn = " ".join((self.__dsn, f"options='-c timezone={self.__timezone}'"))
 
         self.connection: CustomPostgreSQLConnection = self.__connect()
         self.cursor: CustomPostgreSQLCursor = self.connection.cursor(cursor_factory=CustomPostgreSQLCursor)

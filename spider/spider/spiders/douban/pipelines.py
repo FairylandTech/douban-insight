@@ -13,7 +13,7 @@ import scrapy
 from fairylandlogger import LogManager, Logger
 from itemadapter import ItemAdapter
 
-from fairylandfuture.database.mysql import MySQLConnector, MySQLOperator
+from fairylandfuture.database.postgresql import PostgreSQLConnector, PostgreSQLOperator
 from fairylandfuture.structures.database import MySQLExecuteStructure
 from spider.spiders.douban.cache import RedisManager, DoubanCacheManager
 from spider.spiders.douban.config import DoubanConfig
@@ -29,9 +29,9 @@ class DoubanMoviePipeline:
     Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-pipeline", "douban")
 
     def __init__(self):
-        self.config: t.Dict[str, t.Any] = DoubanConfig.load().get("mysql", {})
-        self.__db_connector: t.Optional["MySQLConnector"] = None
-        self.db: t.Optional["MySQLOperator"] = None
+        self.config: t.Dict[str, t.Any] = DoubanConfig.load().get("postgresql", {})
+        self.__db_connector: t.Optional["PostgreSQLConnector"] = None
+        self.db: t.Optional["PostgreSQLOperator"] = None
         self.redis: "DoubanCacheManager" = RedisManager
 
         self.movie_dao: t.Optional["MovieDAO"] = None
@@ -40,15 +40,15 @@ class DoubanMoviePipeline:
     def open_spider(self, spider):
         """爬虫启动时连接数据库"""
         try:
-            self.__db_connector: "MySQLConnector" = MySQLConnector(
+            self.__db_connector: "PostgreSQLConnector" = PostgreSQLConnector(
                 host=self.config.get("host"),
                 port=self.config.get("port"),
                 database=self.config.get("database"),
                 user=self.config.get("user"),
                 password=self.config.get("password"),
             )
-            self.Log.info("数据库连接成功")
-            self.db: "MySQLOperator" = MySQLOperator(connector=self.__db_connector)
+            self.Log.info(f"数据库连接成功: {self.__db_connector.dsn}")
+            self.db: "PostgreSQLOperator" = PostgreSQLOperator(connector=self.__db_connector)
 
             self.movie_dao = MovieDAO(db=self.db)
             self.movie_artist_dao = ArtistDAO(db=self.db)
@@ -69,7 +69,7 @@ class DoubanMoviePipeline:
         try:
             if isinstance(item, MovieInfoTiem):
                 self.__process_movie_info(item)
-                self.redis.mark_completed(item.get("movie_id"), dict(MovieInfoTiem))
+                self.redis.mark_completed(item.get("movie_id"), {k: v for k, v in item.items()})
         except Exception as err:
             self.Log.error(f"处理数据项失败: {err}")
             self.Log.error(traceback.format_exc())
@@ -100,6 +100,7 @@ class DoubanMoviePipeline:
         movie_data = MovieStructure(**movie_info)
         self.movie_dao.insert_movie(movie_data)
 
+        """
         # 插入导演、编剧、演员 到 tb_artist 并建立关系
         artists: t.List[t.Dict[str, str]] = []
         artists.extend([{"artist_id": director.get("artist_id"), "name": director.get("name"), "role": "director"} for director in directors])
@@ -112,3 +113,4 @@ class DoubanMoviePipeline:
             self.movie_artist_dao.insert_artist(artist_data)
             # 建立电影与艺术家关系
             self.movie_artist_dao.insert_movie_artist_relation(role, movie_data.movie_id, artist_data.artist_id)
+        """

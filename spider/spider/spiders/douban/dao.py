@@ -11,8 +11,8 @@ import typing as t
 
 from fairylandlogger import LogManager, Logger
 
-from fairylandfuture.database.mysql import MySQLOperator
-from fairylandfuture.structures.database import MySQLExecuteStructure
+from fairylandfuture.database.postgresql import PostgreSQLOperator
+from fairylandfuture.structures.database import MySQLExecuteStructure, PostgreSQLExecuteStructure
 from spider.spiders.douban.structures import MovieStructure, MovieArtistStructure
 from spider.spiders.douban.utils import DoubanUtils
 
@@ -22,60 +22,32 @@ Log: "Logger" = LogManager.get_logger("douban-dao", "douban")
 class MovieDAO:
     """电影数据访问对象"""
 
-    def __init__(self, db: "MySQLOperator"):
+    def __init__(self, db: "PostgreSQLOperator"):
         self.db = db
 
-    def get_movie_by_movie_id(self, movie_id: str):
-        query = """
-                select id,
-                       movie_id,
-                       full_name,
-                       chinese_name,
-                       original_name,
-                       release_date,
-                       score,
-                       summary,
-                       icon
-                from tb_movie
-                where movie_id = %(movie_id)s
-                  and deleted is false
-                """
-        args = {"movie_id": movie_id}
-        query = DoubanUtils.query_sql_clean(query)
-        Log.debug(f"查询电影信息, Query: {query}, Args: {args}")
-
-        execute = MySQLExecuteStructure(query, args)
-
-        result = self.db.select(execute)
-        Log.debug(f"查询结果: {result}")
-
-        if isinstance(result, bool) or not result:
-            return None
-
-        if len(result) == 1:
-            result = result[0]
-        else:
-            result = None
-
-        return result
-
     def insert_movie(self, movie_data: "MovieStructure"):
-        existing_movie = self.get_movie_by_movie_id(movie_data.movie_id)
-        if existing_movie:
-            Log.info(f"电影已存在: {movie_data.full_name} ({movie_data.movie_id})")
-            return
-
         query = """
                 insert into
-                    tb_movie (movie_id, full_name, chinese_name, original_name, release_date, score, summary, icon)
+                    movie.tb_movie (movie_id, full_name, chinese_name, original_name, release_date, score, summary, icon)
                 values
-                    (%(movie_id)s, %(full_name)s, %(chinese_name)s, %(original_name)s, %(release_date)s, %(score)s, %(summary)s, %(icon)s);
+                    (%(movie_id)s, %(full_name)s, %(chinese_name)s, %(original_name)s, %(release_date)s, %(score)s, %(summary)s, %(icon)s)
+                on conflict (movie_id) do update
+                    set movie_id = excluded.movie_id,
+                        full_name = excluded.full_name,
+                        chinese_name = excluded.chinese_name,
+                        original_name = excluded.original_name,
+                        release_date = excluded.release_date,
+                        score = excluded.score,
+                        summary = excluded.summary,
+                        icon = excluded.icon,
+                        updated_at = now()
+                returning id;
                 """
-        args = movie_data.to_dict()
+        vars = movie_data.to_dict()
         query = DoubanUtils.query_sql_clean(query)
-        Log.debug(f"插入电影信息, Query: {query}, Args: {args}")
+        Log.debug(f"插入电影信息, Query: {query}, Vars: {vars}")
 
-        execute = MySQLExecuteStructure(query, args)
+        execute = PostgreSQLExecuteStructure(query, vars)
 
         try:
             result = self.db.insert(execute)
@@ -89,7 +61,7 @@ class MovieDAO:
 class ArtistDAO:
     """演员数据访问对象"""
 
-    def __init__(self, db: "MySQLOperator"):
+    def __init__(self, db: "PostgreSQLOperator"):
         self.db = db
 
     def get_artist_by_artist_id(self, artist_id: str):
@@ -184,7 +156,7 @@ class ArtistDAO:
 class MovieTypeDAO:
     """电影类型数据访问对象"""
 
-    def __init__(self, db: "MySQLOperator"):
+    def __init__(self, db: "PostgreSQLOperator"):
         self.db = db
 
     def get_type_by_name(self, type_name: str) -> t.Optional[dict]:
@@ -215,7 +187,7 @@ class MovieTypeDAO:
 class MovieCountryDAO:
     """电影国家数据访问对象"""
 
-    def __init__(self, db: "MySQLOperator"):
+    def __init__(self, db: "PostgreSQLOperator"):
         self.db = db
 
     def get_country_by_name(self, country_name: str) -> t.Optional[dict]:
@@ -246,7 +218,7 @@ class MovieCountryDAO:
 class MovieRelationDAO:
     """电影人物关系数据访问对象"""
 
-    def __init__(self, db: "MySQLOperator"):
+    def __init__(self, db: "PostgreSQLOperator"):
         self.db = db
 
     def insert_director_relation(self, movie_id: int, artist_id: int):
@@ -301,7 +273,7 @@ class MovieRelationDAO:
 class MovieCommentDAO:
     """电影评论数据访问对象"""
 
-    def __init__(self, db: "MySQLOperator"):
+    def __init__(self, db: "PostgreSQLOperator"):
         self.db = db
 
     def insert_comment(self, comment_data: dict) -> int:

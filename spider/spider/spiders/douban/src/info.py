@@ -304,6 +304,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 完整的电影名称
         :rtype: str
         """
+        self.Log.info("提取电影完整名称")
         try:
             return self.remove_control_chars(self.__wrapper_css(response.css("""h1 span[property="v:itemreviewed"]::text""")))
         except Exception as error:
@@ -318,6 +319,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 上映日期
         :rtype: datetime.date
         """
+        self.Log.info("提取电影上映日期")
         try:
             content = self.__wrapper_css(response.css("""span[property="v:initialReleaseDate"]::text"""))
             self.Log.info(f"提取上映日期内容: {content}")
@@ -334,6 +336,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 电影评分
         :rtype: float | str
         """
+        self.Log.info("提取电影评分")
         score = self.__wrapper_css(response.css("""strong.rating_num::text"""))
         try:
             return float(score)
@@ -350,6 +353,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 导演列表
         :rtype: list
         """
+        self.Log.info("提取导演列表")
         writers = []
 
         directors = response.css("""#info a[rel="v:directedBy"]::text""").getall()
@@ -375,6 +379,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 编剧列表
         :rtype: list
         """
+        self.Log.info("提取编剧列表")
         writers = []
 
         writer_section = response.xpath('//div[@id="info"]//span[@class="pl" and contains(text(), "编剧")]/following-sibling::span[@class="attrs"][1]')
@@ -406,6 +411,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 演员列表
         :rtype: list
         """
+        self.Log.info("提取演员列表")
         actors = []
 
         actor_names = response.css("""#info a[rel="v:starring"]::text""").getall()
@@ -432,6 +438,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 电影类型列表
         :rtype: list
         """
+        self.Log.info("提取电影类型")
         return response.css('span[property="v:genre"]::text').getall()
 
     def __extract_countries(self, response: scrapy.http.Response) -> t.List[str]:
@@ -443,6 +450,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 国家/地区列表
         :rtype: list
         """
+        self.Log.info("提取电影国家/地区")
         countries = []
         info_section = response.css("div#info")
         info_text = info_section.css("::text").getall()
@@ -463,6 +471,7 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 电影简介
         :rtype: str
         """
+        self.Log.info("提取电影简介")
         summary = response.css('span[property="v:summary"]::text').getall()
         return "".join(summary).strip() if summary else ""
 
@@ -475,4 +484,5 @@ class DoubanMovieSpider(scrapy.Spider):
         :return: 封面图片URL
         :rtype: str
         """
-        return response.css("div#mainpic img::attr(src)").get(default="")
+        self.Log.info("提取封面图片URL")
+        return self.__wrapper_css(response.css("div#mainpic img::attr(src)"))
