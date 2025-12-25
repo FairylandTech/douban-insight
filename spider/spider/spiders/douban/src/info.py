@@ -86,7 +86,6 @@ class DoubanMovieSpider(scrapy.Spider):
             self.Log.info(f"缓存中待处理任务数量: {len(tasks)}")
             for task in tasks:
                 yield from self.__request_movie_info(task.movie_id)
-            return
 
         # 分页拉取推荐列表
         # 读取缓存中的 start（偏移量），换算为页码；固定每页 20 条
