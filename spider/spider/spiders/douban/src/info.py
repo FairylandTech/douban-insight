@@ -42,9 +42,10 @@ class DoubanMovieSpider(scrapy.Spider):
     name = "douban-movie-info"
     allowed_domains = ["douban.com", "m.douban.com"]
 
-    DEFAULT_MAX_PAGES = 1000
+    DEFAULT_MAX_PAGES = 26
     DEFAULT_COUNT_PER_PAGE = 20
-    MOVIE_TYPE = "喜剧"
+    # MOVIE_TYPE = "喜剧"
+    MOVIE_TYPE = "爱情"
 
     custom_settings = {
         "CONCURRENT_REQUESTS": 1,
@@ -85,6 +86,7 @@ class DoubanMovieSpider(scrapy.Spider):
         if tasks:
             self.Log.info(f"缓存中待处理任务数量: {len(tasks)}")
             for task in tasks:
+                self.Log.info(f"处理缓存任务: ID={task.movie_id}, Status={task.status}")
                 yield from self.__request_movie_info(task.movie_id)
 
         # 分页拉取推荐列表

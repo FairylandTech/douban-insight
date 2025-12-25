@@ -6,7 +6,7 @@
 @organization: https://github.com/FairylandFuture
 @datetime: 2025-12-22 20:48:18 UTC+08:00
 """
-
+import json
 import typing as t
 from http.cookies import SimpleCookie
 
@@ -39,18 +39,17 @@ def main():
 
     params = {
         "refresh": "0",
-        "start": "1260",
+        "start": "500",
         "count": "20",
-        # "selected_categories": {"类型": "喜剧"},
-        "selected_categories": {},
+        "selected_categories": json.dumps({"类型": "爱情"}, ensure_ascii=False, separators=(",", ":")),
         "uncollect": False,
         "score_range": "0,10",
-        "tags": "",
+        "tags": "爱情",
         "ck": "A_Ee",
     }
 
     response = session.get(
-        url = "https://m.douban.com/rexxar/api/v2/movie/recommend",
+        url="https://m.douban.com/rexxar/api/v2/movie/recommend",
         params=params,
         headers=headers,
         timeout=30,

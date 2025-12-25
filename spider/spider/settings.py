@@ -54,5 +54,5 @@ ITEM_PIPELINES = {
 
 DOWNLOADER_MIDDLEWARES = {
     # 添加代理中间件
-    "spider.middlewares.SpiderProxyMiddleware": 0,
+    # "spider.middlewares.SpiderProxyMiddleware": 0,
 }
