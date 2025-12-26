@@ -173,21 +173,127 @@ class DoubanCacheManager(RedisCacheManager):
         self.Log.info(f"添加电影ID {movie_id} 到数据库电影ID列表缓存: {key}")
         self.redis.sadd(key, movie_id)
 
-    def save_comment_task(
-        self,
-    ):
-        pass
+    def save_comment_task(self, task: "MovieTask"):
+        try:
+            key = f"douban:movie:comment:task:{task.movie_id}"
+            task.update_time = time.time()
 
-    def set_movie_comment_page(self, movie_id: str, sort: str, page: int):
-        key = self._get_key(f"douban:movie:comment:page:{movie_id}:{sort}")
-        self.Log.info(f"设置电影 {movie_id} 分类 {sort} 短评页码 {page} 到缓存: {key}")
-        self.redis.set(key, page)
+            task_data = asdict(task)
+            task_data.update(status=task.status.value)
+            self.Log.info(f"短评任务数据: {task_data}")
 
-    def get_movie_comment_page(self, movie_id: str, sort: str) -> int:
-        key = self._get_key(f"douban:movie:comment:page:{movie_id}:{sort}")
-        self.Log.info(f"获取电影 {movie_id} 分类 {sort} 短评页码从缓存: {key}")
-        page = self.redis.get(key)
-        return int(page) if page else 0
+            self.Log.info(f"保存短评任务 {key} 到缓存")
+            self.set(key=key, value=json.dumps(task_data, ensure_ascii=False, separators=(",", ":")))
+            return True
+        except Exception as error:
+            self.Log.error(f"保存短评任务 {task.movie_id} 失败: {error}")
+            return False
+
+    def get_comment_task(self, movie_id: str) -> t.Optional["MovieTask"]:
+        key = self._get_key(f"douban:movie:comment:task:{movie_id}")
+        self.Log.info(f"从缓存获取短评任务 {key}")
+        data = self.redis.get(key)
+
+        if not data:
+            self.Log.warning(f"短评任务 {movie_id} 不存在于缓存")
+            return None
+
+        try:
+            task_data = json.loads(data)
+            task_data["status"] = SpiderStatus(task_data["status"])
+            self.Log.info(f"{movie_id} 短评任务数据: {task_data}")
+            return MovieTask(**task_data)
+        except (json.JSONDecodeError, KeyError, ValueError) as error:
+            print(f"解析短评任务数据失败 {movie_id}: {error}")
+            return None
+
+    def get_comment_tasks(self):
+        pattern = self._get_key("douban:movie:comment:task:*")
+        keys: t.List[bytes] = self.redis.keys(pattern)
+        self.Log.info(f"获取所有短评任务，匹配模式: {pattern}")
+
+        tasks: t.List["MovieTask"] = []
+        for key in keys:
+            key: bytes
+            value: bytes = self.redis.get(key.decode("UTF-8"))
+            if not value:
+                self.Log.warning(f"短评任务 {key.decode('UTF-8')} 数据为空, 跳过")
+                continue
+
+            value_asdict: t.Dict[str, t.Any] = json.loads(value)
+            task = MovieTask(
+                movie_id=value_asdict.get("movie_id"),
+                status=SpiderStatus(value_asdict.get("status")),
+                create_time=value_asdict.get("create_time"),
+                update_time=value_asdict.get("update_time"),
+                retry_count=value_asdict.get("retry_count"),
+                max_retries=value_asdict.get("max_retries"),
+                error_msg=value_asdict.get("error_msg"),
+                data=value_asdict.get("data"),
+            )
+            tasks.append(task)
+
+        return tasks
+
+    def clean_comment_completed_tasks(self):
+        pattern = self._get_key("douban:movie:comment:task:*")
+        keys: t.List[bytes] = self.redis.keys(pattern)
+        self.Log.info(f"清理已完成短评任务，匹配模式: {pattern}")
+
+        for key in keys:
+            key: bytes
+            value: bytes = self.redis.get(key.decode("UTF-8"))
+            if not value:
+                self.Log.warning(f"短评任务 {key.decode('UTF-8')} 数据为空, 跳过")
+                continue
+
+            value_asdict: t.Dict[str, t.Any] = json.loads(value)
+            status = SpiderStatus(value_asdict.get("status"))
+            if status == SpiderStatus.COMPLETED:
+                self.Log.info(f"删除已完成短评任务 {key.decode('UTF-8')}")
+                self.redis.delete(key)
+
+    def mark_comment_processing(self, movie_id: str) -> bool:
+        self.Log.info(f"标记短评任务 {movie_id} 为处理中")
+        task = self.get_comment_task(movie_id)
+        task.status = SpiderStatus.PROCESSING
+        task.error_msg = ""
+        return self.save_comment_task(task)
+
+    def mark_comment_parsed(self, movie_id: str) -> bool:
+        self.Log.info(f"标记短评任务 {movie_id} 为信息已解析")
+        task = self.get_comment_task(movie_id)
+        task.status = SpiderStatus.PARSED
+        task.error_msg = ""
+        return self.save_comment_task(task)
+
+    def mark_comment_completed(self, movie_id: str, data: dict = None) -> bool:
+        self.Log.info(f"标记短评任务 {movie_id} 为已完成")
+        task = self.get_comment_task(movie_id)
+        task.status = SpiderStatus.COMPLETED
+        task.error_msg = ""
+        task.data = JsonSerializerHelper.serialize(data)
+        return self.save_comment_task(task)
+
+    def mark_comment_failed(self, movie_id: str, error_msg: str) -> bool:
+        self.Log.info(f"标记短评任务 {movie_id} 为失败，错误信息: {error_msg}")
+        task = self.get_comment_task(movie_id)
+        task.status = SpiderStatus.FAILED
+        task.error_msg = error_msg
+        task.retry_count += 1
+        return self.save_comment_task(task)
+
+    def save_druable_comment_completed(self, movie_id: str):
+        key = self._get_key("douban:movie:durable:comment:completed")
+        self.Log.info(f"保存持久化已完成短评电影ID {movie_id} 到缓存: {key}")
+        self.redis.sadd(key, movie_id)
+
+    def get_druable_comment_completed(self) -> t.Set[str]:
+        key = self._get_key("douban:movie:durable:comment:completed")
+        self.Log.info(f"从缓存获取持久化已完成短评电影ID列表: {key}")
+        ids = self.redis.smembers(key)
+
+        return {movie_id.decode("UTF-8") for movie_id in ids}
 
 
 RedisManager = DoubanCacheManager()

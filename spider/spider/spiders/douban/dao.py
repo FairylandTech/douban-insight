@@ -200,7 +200,8 @@ class MovieTypeDAO:
         execute = PostgreSQLExecuteStructure(query, params)
 
         try:
-            result = self.db.select(execute)
+            MovieTypeRow = namedtuple("MovieTypeRow", ("id",))
+            result: t.Tuple[MovieTypeRow, ...] = self.db.select(execute)
             Log.info(f"查询电影类型ID, BD Result: {result}")
             if result and len(result) > 0:
                 return result[0].id
@@ -280,3 +281,35 @@ class MovieCountryDAO:
             Log.info(f"保存电影国家关系: movie_id={movie_id}, country_name={country_name}")
         except Exception as error:
             Log.error(f"保存电影国家关系失败: {error}")
+
+
+class MovieCommentDAO:
+    """电影评论数据访问对象"""
+
+    def __init__(self, db: "PostgreSQLOperator"):
+        self.db = db
+
+    def insert_comment(self, comment_data: dict):
+        query = """
+                insert into
+                    movie.tb_movie_comment (movie_id, comment_id, content)
+                values
+                    (%(movie_id)s, %(comment_id)s, %(content)s)
+                on conflict (comment_id) do update
+                    set movie_id = excluded.movie_id,
+                        content = excluded.content,
+                        updated_at = now()
+                returning id;
+                """
+        query = DoubanUtils.query_sql_clean(query)
+        Log.debug(f"插入电影评论, Query: {query}, Params: {comment_data}")
+
+        execute = PostgreSQLExecuteStructure(query, comment_data)
+        try:
+            result = self.db.insert(execute)
+            Log.info(f"插入电影评论, DB Result: {result}")
+            return result
+        except Exception as error:
+            Log.error(f"保存电影评论失败: {error}")
+            Log.error(traceback.format_exc())
+            raise error

@@ -116,7 +116,7 @@ create table if not exists movie.tb_movie_comment
 (
     id         serial primary key,
     movie_id   varchar(32)             not null,
-    comment_id varchar(32)             not null,
+    comment_id varchar(32) unique      not null,
     content    text                    not null,
     created_at timestamp default now() not null,
     updated_at timestamp default now() not null,

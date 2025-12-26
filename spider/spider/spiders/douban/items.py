@@ -43,7 +43,3 @@ class MovieCommentItem(scrapy.Item):
     movie_id = scrapy.Field()  # 电影ID（豆瓣ID）
     comment_id = scrapy.Field()  # 评论ID
     content = scrapy.Field()  # 评论内容
-    rating = scrapy.Field()  # 评分 (1-5)
-    username = scrapy.Field()  # 用户名（仅用于日志）
-    useful_count = scrapy.Field()  # 有用数（仅用于日志）
-    comment_time = scrapy.Field()  # 评论时间（仅用于日志）

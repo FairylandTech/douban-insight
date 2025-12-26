@@ -16,9 +16,9 @@ from itemadapter import ItemAdapter
 
 from fairylandfuture.database.postgresql import PostgreSQLOperator
 from spider.spiders.douban.cache import RedisManager, DoubanCacheManager
-from spider.spiders.douban.dao import MovieDAO, ArtistDAO, MovieCountryDAO, MovieTypeDAO
+from spider.spiders.douban.dao import MovieDAO, ArtistDAO, MovieCountryDAO, MovieTypeDAO, MovieCommentDAO
 from spider.spiders.douban.database import PostgreSQLManager, DatabaseManager
-from spider.spiders.douban.items import MovieInfoTiem
+from spider.spiders.douban.items import MovieInfoTiem, MovieCommentItem
 from spider.spiders.douban.structures import MovieStructure, MovieArtistStructure
 
 
@@ -37,6 +37,7 @@ class DoubanMoviePipeline:
         self.movie_artist_dao: t.Optional["ArtistDAO"] = None
         self.movie_type_dao: t.Optional["MovieTypeDAO"] = None
         self.movie_country_dao: t.Optional["MovieCountryDAO"] = None
+        self.movie_comment_dao: t.Optional["MovieCommentDAO"] = None
 
     def open_spider(self, spider):
         """爬虫启动时连接数据库"""
@@ -45,12 +46,16 @@ class DoubanMoviePipeline:
             self.movie_artist_dao = ArtistDAO(db=self.db)
             self.movie_type_dao = MovieTypeDAO(db=self.db)
             self.movie_country_dao = MovieCountryDAO(db=self.db)
+            self.movie_comment_dao = MovieCommentDAO(db=self.db)
         except Exception as err:
             self.Log.error(f"数据库连接失败: {err}")
             raise err
 
     def close_spider(self, spider):
-        self.cache.clean_completed_tasks()
+        if spider.name == "douban-movie-info":
+            self.cache.clean_completed_tasks()
+        elif spider.name == "douban-movie-short-comment":
+            self.cache.clean_comment_completed_tasks()
 
     def process_item(self, item: scrapy.Item, spider: scrapy.Spider) -> scrapy.Item:
         """处理数据项"""
@@ -59,6 +64,8 @@ class DoubanMoviePipeline:
                 self.__process_movie_info(item)
                 self.cache.mark_completed(item.get("movie_id"), {k: v for k, v in item.items()})
                 self.cache.add_to_db_movie_ids(item.get("movie_id"))
+            elif isinstance(item, MovieCommentItem):
+                self.__process_movie_comment(item)
         except Exception as err:
             self.Log.error(f"处理数据项失败: {err}")
             self.Log.error(traceback.format_exc())
@@ -110,3 +117,18 @@ class DoubanMoviePipeline:
         # 插入制片国家/地区关系
         for country in countries:
             self.movie_country_dao.insert_movie_country_relation(movie_data.movie_id, country)
+
+    def __process_movie_comment(self, item: "MovieCommentItem"):
+        try:
+            item = ItemAdapter(item)
+            comment_info = {
+                "movie_id": item.get("movie_id"),
+                "comment_id": item.get("comment_id"),
+                "content": item.get("content"),
+            }
+            self.movie_comment_dao.insert_comment(comment_info)
+            self.cache.mark_comment_completed(comment_info.get("movie_id"), comment_info)
+        except Exception as error:
+            self.Log.error(f"处理电影评论失败: {error}")
+            self.cache.mark_comment_failed(item.get("movie_id"), str(error))
+            raise error
