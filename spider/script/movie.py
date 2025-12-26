@@ -41,10 +41,10 @@ def main():
         "refresh": "0",
         "start": "500",
         "count": "20",
-        "selected_categories": json.dumps({"类型": "爱情"}, ensure_ascii=False, separators=(",", ":")),
+        "selected_categories": json.dumps({"类型": "动作"}, ensure_ascii=False, separators=(",", ":")),
         "uncollect": False,
         "score_range": "0,10",
-        "tags": "爱情",
+        "tags": "动作",
         "ck": "A_Ee",
     }
 

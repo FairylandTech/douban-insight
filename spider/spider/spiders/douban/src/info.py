@@ -44,8 +44,7 @@ class DoubanMovieSpider(scrapy.Spider):
 
     DEFAULT_MAX_PAGES = 26
     DEFAULT_COUNT_PER_PAGE = 20
-    # MOVIE_TYPE = "喜剧"
-    MOVIE_TYPE = "爱情"
+    MOVIE_TYPE = "动作"
 
     custom_settings = {
         "CONCURRENT_REQUESTS": 1,
@@ -53,7 +52,7 @@ class DoubanMovieSpider(scrapy.Spider):
         "CONCURRENT_REQUESTS_PER_IP": 1,
         "CONCURRENT_ITEMS": 1,
         "REACTOR_THREADPOOL_MAXSIZE": 1,
-        "DOWNLOAD_DELAY": 0.5,
+        "DOWNLOAD_DELAY": 30,
         "AUTOTHROTTLE_ENABLED": False,
         "SCHEDULER_DEBUG": False,
     }
