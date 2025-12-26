@@ -44,7 +44,6 @@ class DoubanMovieSpider(scrapy.Spider):
 
     DEFAULT_MAX_PAGES = 26
     DEFAULT_COUNT_PER_PAGE = 20
-    MOVIE_TYPE = "动作"
 
     custom_settings = {
         "CONCURRENT_REQUESTS": 1,
@@ -88,25 +87,34 @@ class DoubanMovieSpider(scrapy.Spider):
                 self.Log.info(f"处理缓存任务: ID={task.movie_id}, Status={task.status}")
                 yield from self.__request_movie_info(task.movie_id)
 
-        # 分页拉取推荐列表
-        # 读取缓存中的 start（偏移量），换算为页码；固定每页 20 条
-        start = int(self.cache.get(f"douban:movie:recommend:start:{self.movie_type_dao.get_id_by_name(self.MOVIE_TYPE)}") or "0")
-        count = self.count_per_page
-        page = start // count if count > 0 else 0
-        # 限制最大页数为 10 页（或传入的 max_pages），若已达上限则不再请求
-        max_start = self.max_pages * count
-        if start >= max_start:
-            self.Log.info(f"已达到最大分页限制: start={start} >= max_start={max_start}，停止请求。")
-            return
-        yield from self.__request_movie_recommend(start, count, page)
+        types = self.movie_type_dao.get_all_types()
+        self.Log.info(f"电影类型列表: {types}")
+        for typed in types:
+            type_id = typed.get("id")
+            type_name = typed.get("name")
+            self.Log.info(f"开始处理电影类型: ID={type_id}, Name={type_name}")
+            # 分页拉取推荐列表
+            # 读取缓存中的 start（偏移量），换算为页码；固定每页 20 条
+            start = int(self.cache.get(f"douban:movie:recommend:start:{type_id}") or "0")
+            count = self.count_per_page
+            page = start // count if count > 0 else 0
+            # 限制最大页数为 10 页（或传入的 max_pages），若已达上限则不再请求
+            max_start = self.max_pages * count
+            if start >= max_start:
+                self.Log.info(f"已达到最大分页限制: start={start} >= max_start={max_start}，停止请求。")
+                continue
 
-    def __request_movie_recommend(self, start: int, count: int, page: int):
+            yield from self.__request_movie_recommend(start, count, page, type_id, type_name)
+
+    def __request_movie_recommend(self, start: int, count: int, page: int, type_id: int, type_name: str):
         """
         请求电影推荐列表
 
         :param start: 开始索引 (绝对偏移量)
         :param count: 每次请求数量 (固定 20)
         :param page: 当前页码 (用于日志和下一页计算)
+        :param type_id: 电影类型ID
+        :param type_name: 电影类型名称
         """
         # 使用传入的 start 作为绝对偏移量；不强制归一化为 page*count
         effective_start = start
@@ -121,14 +129,14 @@ class DoubanMovieSpider(scrapy.Spider):
             "refresh": "0",
             "start": str(effective_start),
             "count": str(count),
-            "selected_categories": json.dumps({"类型": f"{self.MOVIE_TYPE}"}, ensure_ascii=False, separators=(",", ":")),
+            "selected_categories": json.dumps({"类型": f"{type_name}"}, ensure_ascii=False, separators=(",", ":")),
             "uncollect": False,
             "score_range": "0,10",
-            "tags": f"{self.MOVIE_TYPE}",
+            "tags": f"{type_name}",
             "ck": "A_Ee",
         }
         url_with_params = f"{url}?{urlencode(params, doseq=True)}"
-        self.Log.info(f"请求电影ID列表: start={effective_start}, count={count}, page={page+1}, max_pages={self.max_pages}")
+        self.Log.info(f"请求电影ID列表: start={effective_start}, count={count}, page={page+1}, type={type_name}, max_pages={self.max_pages}")
         yield scrapy.Request(
             method="GET",
             url=url_with_params,
@@ -136,7 +144,7 @@ class DoubanMovieSpider(scrapy.Spider):
             cookies=self.cookies,
             callback=self.__parse_movie_ids_page,
             dont_filter=True,
-            meta={"start": effective_start, "count": count, "page": page},
+            meta={"start": effective_start, "count": count, "page": page, "type_id": type_id, "type_name": type_name},
         )
 
     def __parse_movie_ids_page(self, response: scrapy.http.Response):
@@ -148,12 +156,14 @@ class DoubanMovieSpider(scrapy.Spider):
             start = response.meta.get("start")
             count = response.meta.get("count")
             page = response.meta.get("page")
+            type_id = response.meta.get("type_id")
+            type_name = response.meta.get("type_name")
 
-            self.Log.info(f"获取到 {len(items)} 条数据，start={start}, total={total}")
+            self.Log.info(f"获取到 {len(items)} 条数据，start={start}, total={total}, type={type_name}")
 
             if not items:
-                self.Log.info("当前页为空，停止分页。")
-                self.cache.set(f"douban:movie:recommend:start:{self.movie_type_dao.get_id_by_name(self.MOVIE_TYPE)}", str(start))
+                self.Log.info(f"当前页为空，停止分页: type={type_name}")
+                self.cache.set(f"douban:movie:recommend:start:{type_id}", str(start))
                 return
 
             for item in items:
@@ -176,26 +186,26 @@ class DoubanMovieSpider(scrapy.Spider):
             next_start = next_page * count
             # 如果当前返回数量等于请求数量，且尚未达到最大限制，则推进到下一页的 start
             # 否则保持当前 start 以避免越界
-            self.cache.set(f"douban:movie:recommend:start:{self.movie_type_dao.get_id_by_name(self.MOVIE_TYPE)}", str(next_start))
+            self.cache.set(f"douban:movie:recommend:start:{type_id}", str(next_start))
 
             # 是否继续分页：以最大页数为上限
             max_start = self.max_pages * count  # 例如 10 * 20 = 200
             should_continue = True
             if not items:
                 should_continue = False
-                self.Log.info("当前页为空，停止分页。")
+                self.Log.info(f"当前页为空，停止分页: type={type_name}")
             elif next_start >= max_start:
                 should_continue = False
-                self.Log.info(f"达到最大页数限制: next_start={next_start} >= max_start={max_start}，停止分页。")
+                self.Log.info(f"达到最大页数限制: next_start={next_start} >= max_start={max_start}，停止分页: type={type_name}")
             elif total is not None and next_start >= total:
                 should_continue = False
-                self.Log.info(f"已达到总数限制 total={total}，停止分页。")
+                self.Log.info(f"已达到总数限制 total={total}，停止分页: type={type_name}")
             elif len(items) < count:
                 should_continue = False
-                self.Log.info("返回数量小于请求数量，视为最后一页，停止分页。")
+                self.Log.info(f"返回数量小于请求数量，视为最后一页，停止分页: type={type_name}")
 
             if should_continue:
-                yield from self.__request_movie_recommend(next_start, count, next_page)
+                yield from self.__request_movie_recommend(next_start, count, next_page, type_id, type_name)
 
         except json.JSONDecodeError as e:
             self.Log.error(f"解析电影ID列表失败: {e}")

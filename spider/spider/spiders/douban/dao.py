@@ -168,6 +168,24 @@ class MovieTypeDAO:
     def __init__(self, db: "PostgreSQLOperator"):
         self.db = db
 
+    def get_all_types(self):
+        query = """
+                select id, name
+                from movie.tb_movie_type
+                where deleted is false
+                order by id;
+                """
+        query = DoubanUtils.query_sql_clean(query)
+        Log.debug(f"查询所有电影类型, Query: {query}, Vars: {{}}")
+        execute = PostgreSQLExecuteStructure(query, {})
+        MovieTypeRow = namedtuple("MovieTypeRow", ("id", "name"))
+        result: t.Tuple[MovieTypeRow, ...] = self.db.select(execute)
+
+        if isinstance(result, t.Sequence) and len(result) > 0:
+            return [{"id": row.id, "name": row.name} for row in result]
+        else:
+            return []
+
     def get_id_by_name(self, type_name: str) -> t.Optional[int]:
         query = """
                 select id
