@@ -45,7 +45,7 @@ def check_requirements():
             import yaml
 
             config = yaml.safe_load(f)
-            redis_config = config.get("redis", {})
+            redis_config = config.get("cache", {})
 
         client = Redis(
             host=redis_config.get("host", "localhost"),

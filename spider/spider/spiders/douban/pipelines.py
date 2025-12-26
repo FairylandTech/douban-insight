@@ -31,7 +31,7 @@ class DoubanMoviePipeline:
         self.__dbm: DatabaseManager = PostgreSQLManager
 
         self.db: PostgreSQLOperator = PostgreSQLOperator(self.__dbm.connector)
-        self.redis: "DoubanCacheManager" = RedisManager
+        self.cache: "DoubanCacheManager" = RedisManager
 
         self.movie_dao: t.Optional["MovieDAO"] = None
         self.movie_artist_dao: t.Optional["ArtistDAO"] = None
@@ -50,20 +50,15 @@ class DoubanMoviePipeline:
             raise err
 
     def close_spider(self, spider):
-        """爬虫关闭时断开数据库连接"""
-        try:
-            self.__dbm.connector.close()
-            self.Log.info("数据库连接已断开")
-        except Exception as err:
-            self.Log.error(f"关闭数据库连接失败: {err}")
+        self.cache.clean_completed_tasks()
 
     def process_item(self, item: scrapy.Item, spider: scrapy.Spider) -> scrapy.Item:
         """处理数据项"""
         try:
             if isinstance(item, MovieInfoTiem):
                 self.__process_movie_info(item)
-                self.redis.mark_completed(item.get("movie_id"), {k: v for k, v in item.items()})
-                self.redis.add_to_db_movie_ids(item.get("movie_id"))
+                self.cache.mark_completed(item.get("movie_id"), {k: v for k, v in item.items()})
+                self.cache.add_to_db_movie_ids(item.get("movie_id"))
         except Exception as err:
             self.Log.error(f"处理数据项失败: {err}")
             self.Log.error(traceback.format_exc())

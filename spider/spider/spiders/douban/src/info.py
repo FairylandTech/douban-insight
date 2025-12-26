@@ -16,52 +16,31 @@ from urllib.parse import urlencode
 import fake_useragent
 import scrapy
 import unicodedata
-from fairylandlogger import LogManager, Logger
 
 from fairylandfuture.database.postgresql import PostgreSQLOperator
 from fairylandfuture.helpers.json.serializer import JsonSerializerHelper
 from spider.enums import SpiderStatus
-from spider.spiders.douban.cache import DoubanCacheManager, RedisManager
 from spider.spiders.douban.dao import MovieDAO, MovieTypeDAO
-from spider.spiders.douban.database import DatabaseManager, PostgreSQLManager
 from spider.spiders.douban.items import MovieInfoTiem
-from spider.spiders.douban.structure import MovieTask
+from spider.spiders.douban.src import DoubanMovieSpiderBase
+from spider.spiders.douban.structures import MovieTask
 from spider.spiders.douban.utils import DoubanUtils
 
 
-class DoubanMovieSpider(scrapy.Spider):
+class DoubanMovieSpider(DoubanMovieSpiderBase):
     """
     获取电影信息
 
     """
 
-    Log: t.ClassVar["Logger"] = LogManager.get_logger("douban-spider", "douban")
-    cache: t.ClassVar["DoubanCacheManager"] = RedisManager
-    database: t.ClassVar["DatabaseManager"] = PostgreSQLManager
-
     name = "douban-movie-info"
-    allowed_domains = ["douban.com", "m.douban.com"]
 
-    DEFAULT_MAX_PAGES = 26
-    DEFAULT_COUNT_PER_PAGE = 20
+    def __init__(self):
+        super().__init__()
 
-    custom_settings = {
-        "CONCURRENT_REQUESTS": 1,
-        "CONCURRENT_REQUESTS_PER_DOMAIN": 1,
-        "CONCURRENT_REQUESTS_PER_IP": 1,
-        "CONCURRENT_ITEMS": 1,
-        "REACTOR_THREADPOOL_MAXSIZE": 1,
-        "DOWNLOAD_DELAY": 30,
-        "AUTOTHROTTLE_ENABLED": False,
-        "SCHEDULER_DEBUG": False,
-    }
+        # 最大页数，默认 10, 每页固定条数 20
+        self.max_pages, self.count_per_page = 26, 20
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # 最大页数，默认 10
-        self.max_pages = int(kwargs.pop("max_pages", self.DEFAULT_MAX_PAGES)) if kwargs else self.DEFAULT_MAX_PAGES
-        # 每页固定条数 20
-        self.count_per_page = self.DEFAULT_COUNT_PER_PAGE
         self.headers = {
             "User-Agent": fake_useragent.FakeUserAgent(os="Windows").random,
             "Referer": "https://movie.douban.com/explore",
@@ -72,6 +51,7 @@ class DoubanMovieSpider(scrapy.Spider):
         self.movie_type_dao = MovieTypeDAO(PostgreSQLOperator(self.database.connector))
 
     def start_requests(self):
+        # self.cache.clean_completed_tasks()
         # 先同步数据库已有ID到缓存
         db_movie_ids = self.movie_dao.get_movie_id_all()
         self.Log.info(f"数据库中已存在的电影ID数量: {len(db_movie_ids)}")
@@ -104,9 +84,9 @@ class DoubanMovieSpider(scrapy.Spider):
                 self.Log.info(f"已达到最大分页限制: start={start} >= max_start={max_start}，停止请求。")
                 continue
 
-            yield from self.__request_movie_recommend(start, count, page, type_id, type_name)
+            yield from self.__request_movie_id(start, count, page, type_id, type_name)
 
-    def __request_movie_recommend(self, start: int, count: int, page: int, type_id: int, type_name: str):
+    def __request_movie_id(self, start: int, count: int, page: int, type_id: int, type_name: str):
         """
         请求电影推荐列表
 
@@ -142,12 +122,12 @@ class DoubanMovieSpider(scrapy.Spider):
             url=url_with_params,
             headers=self.made_headers(),
             cookies=self.cookies,
-            callback=self.__parse_movie_ids_page,
+            callback=self.__parse_movie_id,
             dont_filter=True,
             meta={"start": effective_start, "count": count, "page": page, "type_id": type_id, "type_name": type_name},
         )
 
-    def __parse_movie_ids_page(self, response: scrapy.http.Response):
+    def __parse_movie_id(self, response: scrapy.http.Response):
         self.Log.debug(f"电影ID API响应状态码: {response.status}")
         try:
             data: t.Dict[str, t.Any] = json.loads(response.text)
@@ -205,7 +185,7 @@ class DoubanMovieSpider(scrapy.Spider):
                 self.Log.info(f"返回数量小于请求数量，视为最后一页，停止分页: type={type_name}")
 
             if should_continue:
-                yield from self.__request_movie_recommend(next_start, count, next_page, type_id, type_name)
+                yield from self.__request_movie_id(next_start, count, next_page, type_id, type_name)
 
         except json.JSONDecodeError as e:
             self.Log.error(f"解析电影ID列表失败: {e}")

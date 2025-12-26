@@ -25,8 +25,27 @@ class MovieInfoSpider:
 
 def main():
     headers = {
-        "User-Agent": fake_useragent.UserAgent().random,
-        "Referer": "https://movie.douban.com/explore",
+        "User-Agent": fake_useragent.FakeUserAgent(os="Windows").random,
+        # "Referer": "https://movie.douban.com/explore",
+        "Referer": "https://movie.douban.com/subject/35419153/comments?limit=20&status=P&sort=new_score",
+    }
+
+    headers = headers = {
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "accept-encoding": "gzip, deflate, br, zstd",
+        "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+        "cache-control": "no-cache",
+        "pragma": "no-cache",
+        "priority": "u=0, i",
+        "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "none",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "user-agent": fake_useragent.FakeUserAgent(os="Windows").random,
     }
 
     session = requests.Session()
@@ -48,21 +67,45 @@ def main():
         "ck": "A_Ee",
     }
 
+    # response = session.get(
+    #     url="https://m.douban.com/rexxar/api/v2/movie/recommend",
+    #     params=params,
+    #     headers=headers,
+    #     timeout=30,
+    # )
+
+    params = {
+        "percent_type": "",
+        # "start": "16920",
+        "start": "400",
+        "limit": "20",
+        "status": "P",
+        "sort": "new_score",
+        # "comments_only": "1",
+        # "ck": "A_Ee",
+    }
+    # https://movie.douban.com/subject/35419153/comments?start=380&limit=20&status=P&sort=new_score
+    page = 1
+    size = 20
+    movie_id = "35419153"
     response = session.get(
-        url="https://m.douban.com/rexxar/api/v2/movie/recommend",
-        params=params,
+        url=f"https://movie.douban.com/subject/{movie_id}/comments?start={page * size}&limit={size}&status=P&sort=new_score",
+        # params=params,
         headers=headers,
         timeout=30,
+        verify=False,
     )
     response.raise_for_status()
 
-    print(response.json())
+    # print(response.json())
 
-    print(response.json().get("items"))
+    print(response.json().get("html"))
 
-    ids = [i.get("id") for i in response.json().get("items")]
-    print(ids)
-    # 存入 redis 任务状态为 padding
+    # print(response.json().get("items"))
+    #
+    # ids = [i.get("id") for i in response.json().get("items")]
+    # print(ids)
+    # 存入 cache 任务状态为 padding
 
     # 获取电影信息
     # movie_url = f"https://movie.douban.com/subject/{ids[0]}/"
@@ -73,7 +116,7 @@ def main():
     # )
     # response2.raise_for_status()
     # print(response2.text)
-    # redis 任务 任务状态为 processing
+    # cache 任务 任务状态为 processing
 
     spider = MovieInfoSpider(session)
     spider.spider()

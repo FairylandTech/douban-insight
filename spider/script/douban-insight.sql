@@ -115,12 +115,12 @@ create table if not exists movie.tb_movie_country_relation
 create table if not exists movie.tb_movie_comment
 (
     id         serial primary key,
-    movie_id   varchar(32)               not null,
-    content    text                      not null,
-    rating     integer                   not null,
-    created_at timestamptz default now() not null,
-    updated_at timestamptz default now() not null,
-    deleted    boolean     default false not null
+    movie_id   varchar(32)             not null,
+    comment_id varchar(32)             not null,
+    content    text                    not null,
+    created_at timestamp default now() not null,
+    updated_at timestamp default now() not null,
+    deleted    boolean   default false not null
 );
 
 -- 插入 电影类型

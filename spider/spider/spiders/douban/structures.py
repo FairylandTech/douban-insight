@@ -8,10 +8,24 @@
 """
 
 import datetime
+import time
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from fairylandfuture.core.superclass.structure import BaseFrozenStructure
+from fairylandfuture.core.superclass.structure import BaseFrozenStructure, BaseStructure
+from spider.enums import SpiderStatus
+
+
+@dataclass(frozen=False)
+class MovieTask(BaseStructure):
+    movie_id: str
+    status: SpiderStatus = SpiderStatus.PENDING
+    create_time: float = field(default_factory=time.time)
+    update_time: float = field(default_factory=time.time)
+    retry_count: int = 0
+    max_retries: int = 3
+    error_msg: t.Optional[str] = None
+    data: t.Optional[dict] = None
 
 
 @dataclass(frozen=True)
