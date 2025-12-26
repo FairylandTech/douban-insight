@@ -66,7 +66,8 @@ class DoubanMovieShortCommentSpider(DoubanMovieSpiderBase):
     def __request_movie_comment(self, movie_id: str, start: int, limit: int, sort: str) -> Iterable[Any]:
         url = f"https://movie.douban.com/subject/{movie_id}/comments?start={start}&limit={limit}&status=P&sort={sort}"
 
-        self.cache.mark_comment_processing(movie_id)
+        if start == 0:
+            self.cache.mark_comment_processing(movie_id)
         yield scrapy.Request(
             url=url,
             method="GET",
@@ -83,10 +84,12 @@ class DoubanMovieShortCommentSpider(DoubanMovieSpiderBase):
         sort = kwargs.get("sort")
 
         # 解析评论
-        comment_items = response.css(".comment-item").getall()
+        comment_items = response.css(".comment-item")
         if not comment_items:
             self.Log.info(f"电影 {movie_id} 分类 {sort} 已无更多评论")
-            self.cache.mark_comment_completed(movie_id, None)
+            self.Log.info(f"电影 {movie_id} 分类 {sort} 全部评论获取完成")
+            # 仅在最后一个 sort 完成时才标记电影完成
+            self.__mark_sort_completed(movie_id, sort)
             return
 
         for item in comment_items:
@@ -99,14 +102,29 @@ class DoubanMovieShortCommentSpider(DoubanMovieSpiderBase):
                 comment_id=comment_id,
                 content=content,
             )
-        self.cache.mark_comment_parsed(movie_id)
 
         # 检查是否有下一页
-        next_page = response.css(".next::attr(href)").get()
+        next_page = response.css("a.next::attr(href)").get()
         if next_page:
             new_start = start + limit
             yield from self.__request_movie_comment(movie_id, new_start, limit, sort)
         else:
             self.Log.info(f"电影 {movie_id} 分类 {sort} 全部评论获取完成")
+            self.__mark_sort_completed(movie_id, sort)
+
+    def __mark_sort_completed(self, movie_id: str, sort: str):
+        """标记某个 sort 类型完成，当两个 sort 都完成时标记电影任务完成"""
+        # 获取已完成的 sort 类型集合
+        completed_sorts = self.cache.get(f"douban:movie:comment:completed_sorts:{movie_id}") or ""
+        completed_sorts_set = set(completed_sorts.split(",")) if completed_sorts else set()
+        completed_sorts_set.add(sort)
+
+        # 保存已完成的 sort 类型
+        self.cache.set(f"douban:movie:comment:completed_sorts:{movie_id}", ",".join(completed_sorts_set))
+
+        # 当两个 sort 都完成时，标记电影任务为已完成
+        if len(completed_sorts_set) >= 2:  # 已完成 new_score 和 time 两种排序
+            self.Log.info(f"电影 {movie_id} 所有短评分类已完成")
             self.cache.save_druable_comment_completed(movie_id)
             self.cache.mark_comment_completed(movie_id, None)
+            self.cache.delete(f"douban:movie:comment:completed_sorts:{movie_id}")

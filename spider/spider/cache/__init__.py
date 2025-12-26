@@ -35,3 +35,7 @@ class RedisCacheManager:
     def set(self, key: str, value: t.Any, expire: int | None = None) -> None:
         redis_key = self._get_key(key)
         self.redis.set(name=redis_key, value=value, ex=expire)
+
+    def delete(self, key: str) -> None:
+        redis_key = self._get_key(key)
+        self.redis.delete(redis_key)
