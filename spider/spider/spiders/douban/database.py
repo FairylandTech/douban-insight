@@ -9,6 +9,7 @@
 
 import typing as t
 
+import psycopg2
 from fairylandlogger import LogManager, Logger
 
 from spider.spiders.douban.config import DoubanConfig
@@ -42,6 +43,22 @@ class DatabaseManager:
         self.Log.info(f"数据库连接成功")
 
         return connector
+
+    def ping(self):
+        """
+        探测连接是否存活
+        如果连接断开或不可用，自动触发重连
+        """
+        try:
+            if self.connector.connection is None or self.connector.connection.closed != 0:
+                raise psycopg2.OperationalError("Connection is closed locally")
+
+            with self.connector.connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as e:
+            print(f"检测到连接丢失 ({e})，正在执行重连...")
+            self.connector.reconnect()
 
 
 PostgreSQLManager = DatabaseManager()

@@ -9,6 +9,7 @@
 
 import random
 import time
+import traceback
 from http.cookies import SimpleCookie
 from typing import List, Dict, Optional
 
@@ -19,13 +20,12 @@ from fairylandlogger import Logger, LogManager
 from fairylandfuture.database.postgresql import PostgreSQLOperator
 from spider.spiders.douban.dao import MovieDAO, MovieCommentDAO
 from spider.spiders.douban.database import PostgreSQLManager
+from spider.spiders.douban.cache import RedisManager
 
 from fake_useragent import FakeUserAgent
 
 
 class DoubanMovieCommentFetcher:
-    """豆瓣电影短评获取器（单线程，无缓存）"""
-
     logger: Logger = LogManager.get_logger("douban-comment-fetcher", "douban")
 
     def __init__(self):
@@ -34,12 +34,13 @@ class DoubanMovieCommentFetcher:
 
         # 数据库配置
         db_operator = PostgreSQLOperator(PostgreSQLManager.connector)
-        self.movie_dao = MovieDAO(db_operator)
         self.comment_dao = MovieCommentDAO(db_operator)
+
+        self.cache = RedisManager
 
         # 爬取配置
         self.page_size = 20
-        self.delay = random.randint(30, 180)
+        self.delay = random.randint(30, 300)
 
     def _load_cookies(self, file_path: str) -> dict:
         """从文件加载 Cookie"""
@@ -58,9 +59,30 @@ class DoubanMovieCommentFetcher:
     def get_movie_ids(self) -> List[str]:
         """从数据库获取所有电影 ID"""
         self.logger.info("开始从数据库获取电影 ID 列表")
-        movie_ids = self.movie_dao.get_movie_id_all()
+        movie_ids = self.cache.get_db_movie_ids()
         self.logger.info(f"获取到 {len(movie_ids)} 个电影 ID")
         return movie_ids
+
+    def request_with_retry(self, url: str, movie_id: str):
+        headers = {
+            "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
+            "cache-control": "no-cache",
+            "pragma": "no-cache",
+            "priority": "u=0, i",
+            "referer": f"https://movie.douban.com/subject/{movie_id}/?from=showing",
+            "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"Windows"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "same-origin",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "user-agent": FakeUserAgent(os="Windows").random,
+        }
+        return self.session.get(url=url, headers=headers, cookies=self.cookies, timeout=30, verify=False)
 
     def fetch_comments(self, movie_id: str, sort: str = "new_score") -> List[Dict]:
         """获取单个电影的短评"""
@@ -70,31 +92,21 @@ class DoubanMovieCommentFetcher:
         start = 0
 
         while True:
-            url = f"https://movie.douban.com/subject/{movie_id}/comments?start={start}&limit={self.page_size}&status=P&sort={sort}"
-
-            headers = {
-                "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-                "accept-encoding": "gzip, deflate, br, zstd",
-                "accept-language": "zh-CN,zh;q=0.9,en;q=0.8",
-                "cache-control": "no-cache",
-                "pragma": "no-cache",
-                "priority": "u=0, i",
-                "referer": f"https://movie.douban.com/subject/{movie_id}/?from=showing",
-                "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
-                "sec-fetch-dest": "document",
-                "sec-fetch-mode": "navigate",
-                "sec-fetch-site": "same-origin",
-                "sec-fetch-user": "?1",
-                "upgrade-insecure-requests": "1",
-                "user-agent": FakeUserAgent(os="Windows").random,
-            }
+            url = f"https://movie.douban.com/subject/{movie_id}/comments?start={start}&limit={self.page_size}&status=P&sort={sort}&ck=UaKp"
 
             try:
-                self.logger.info(f"请求 URL: {url}")
-                response = self.session.get(url=url, headers=headers, cookies=self.cookies, timeout=10)
-                response.raise_for_status()
+                response = None
+                while True:
+                    self.logger.info(f"请求 URL: {url}")
+                    response = self.request_with_retry(url, movie_id)
+                    if response.status_code != 200:
+                        self.logger.error(f"请求失败，状态码: {response.status_code}")
+                        dalay = self.delay * random.randint(1, 3)
+                        self.logger.info(f"等待 {dalay} 秒后重试...")
+                        time.sleep(dalay)
+                        response = self.request_with_retry(url, movie_id)
+                    else:
+                        break
 
                 # 解析 HTML
                 soup = BeautifulSoup(response.text, "html.parser")
@@ -137,9 +149,11 @@ class DoubanMovieCommentFetcher:
 
             except requests.RequestException as error:
                 self.logger.error(f"请求失败: {error}")
+                self.logger.error(traceback.format_exc())
                 break
             except Exception as error:
                 self.logger.error(f"解析失败: {error}")
+                self.logger.error(traceback.format_exc())
                 break
 
         self.logger.info(f"电影 {movie_id} 排序 {sort} 共获取 {len(all_comments)} 条评论")
@@ -152,44 +166,13 @@ class DoubanMovieCommentFetcher:
         success_count = 0
         for comment in comments:
             try:
+                PostgreSQLManager.ping()
                 self.comment_dao.insert_comment(comment)
                 success_count += 1
             except Exception as error:
                 self.logger.error(f"保存评论失败: {error}")
 
         self.logger.info(f"成功保存 {success_count}/{len(comments)} 条评论")
-
-    @classmethod
-    def get_proxy(cls, typed: int = 2) -> Optional[str]:
-        response = requests.get(
-            url=f"http://api.shenlongip.com/ip?key=1n28dz8g&protocol={typed}&mr=2&pattern=json&need=1111&count=1&sign=ab79686e9107b4f6b1ab6d8e25529091",
-            timeout=10,
-        )
-        cls.logger.info(f"请求代理IP接口返回: {response.text}")
-        data: Dict[str, int | List[Dict[str, int | str]]] = response.json()
-
-        cls.logger.debug(f"代理IP响应数据: {data}")
-
-        ip = data.get("data", [{}])[0].get("ip", "")
-        port = data.get("data", [{}])[0].get("port", 0)
-
-        if ip and port:
-            proxies = {
-                "http": f"http://{ip}:{port}",
-                "https": f"https://{ip}:{port}",
-                "socks5": f"socks5://{ip}:{port}",
-            }
-
-            if typed == 2:
-                proxy = proxies.get("https", "")
-            else:
-                proxy = proxies.get("http", "")
-            cls.logger.info(f"获取到代理IP: {proxy}")
-
-            return proxy
-        else:
-            cls.logger.error("未能获取到有效的代理IP")
-            return None
 
     def run(self):
         """运行爬虫"""
@@ -210,6 +193,9 @@ class DoubanMovieCommentFetcher:
             self.logger.info(f"\n{'=' * 50}")
             self.logger.info(f"处理电影 [{index}/{total_movies}]: {movie_id}")
             self.logger.info(f"{'=' * 50}")
+            if movie_id in self.cache.get_druable_comment_completed():
+                self.logger.info(f"电影 {movie_id} 的评论已完成，跳过")
+                continue
 
             # 获取两种排序方式的评论
             for sort in ["new_score", "time"]:
@@ -221,6 +207,9 @@ class DoubanMovieCommentFetcher:
                 # 排序之间的延迟
                 if sort == "new_score":
                     time.sleep(self.delay)
+
+            self.logger.info(f"电影 {movie_id} 的所有评论获取完成")
+            self.cache.save_druable_comment_completed(movie_id)
 
         self.logger.info("\n" + "=" * 50)
         self.logger.info("所有电影评论获取完成")
