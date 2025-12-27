@@ -98,6 +98,8 @@ class DoubanMovieCommentFetcher:
                 while True:
                     self.logger.info(f"请求 URL: {url}")
                     response = self.request_with_retry(url, movie_id)
+                    if response.status_code == 301:
+                        self.logger.warning(f"请求被重定向，可能需要更新 Cookie 或使用代理")
                     if response.status_code != 200:
                         self.logger.error(f"请求失败，状态码: {response.status_code}")
                         dalay = self.delay * random.randint(1, 3)
@@ -108,6 +110,7 @@ class DoubanMovieCommentFetcher:
                         break
 
                 # 解析 HTML
+                self.logger.info(f"response request header: {response.request.headers}")
                 soup = BeautifulSoup(response.text, "html.parser")
                 comment_items = soup.select(".comment-item")
 
