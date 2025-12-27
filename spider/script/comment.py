@@ -100,12 +100,14 @@ class DoubanMovieCommentFetcher:
                     response = self.request_with_retry(url, movie_id)
                     if response.status_code == 301:
                         self.logger.warning(f"请求被重定向，可能需要更新 Cookie 或使用代理")
+                        dalay = self.delay * random.randint(1, 3)
+                        self.logger.info(f"等待 {dalay} 秒后重试...")
+                        time.sleep(dalay)
                     if response.status_code != 200:
                         self.logger.error(f"请求失败，状态码: {response.status_code}")
                         dalay = self.delay * random.randint(1, 3)
                         self.logger.info(f"等待 {dalay} 秒后重试...")
                         time.sleep(dalay)
-                        response = self.request_with_retry(url, movie_id)
                     else:
                         break
 
