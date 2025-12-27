@@ -11,18 +11,17 @@ import random
 import time
 import traceback
 from http.cookies import SimpleCookie
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 import requests
 from bs4 import BeautifulSoup
 from fairylandlogger import Logger, LogManager
+from fake_useragent import FakeUserAgent
 
 from fairylandfuture.database.postgresql import PostgreSQLOperator
-from spider.spiders.douban.dao import MovieDAO, MovieCommentDAO
-from spider.spiders.douban.database import PostgreSQLManager
 from spider.spiders.douban.cache import RedisManager
-
-from fake_useragent import FakeUserAgent
+from spider.spiders.douban.dao import MovieCommentDAO
+from spider.spiders.douban.database import PostgreSQLManager
 
 
 class DoubanMovieCommentFetcher:
@@ -30,7 +29,7 @@ class DoubanMovieCommentFetcher:
 
     def __init__(self):
         self.cookies = self._load_cookies("config/douban.cookies")
-        self.session = requests.Session()
+        # self.session = requests.Session()
 
         # 数据库配置
         db_operator = PostgreSQLOperator(PostgreSQLManager.connector)
@@ -82,7 +81,7 @@ class DoubanMovieCommentFetcher:
             "upgrade-insecure-requests": "1",
             "user-agent": FakeUserAgent(os="Windows").random,
         }
-        return self.session.get(url=url, headers=headers, cookies=self.cookies, timeout=30, verify=False)
+        return requests.get(url=url, headers=headers, cookies=self.cookies, timeout=30, verify=False)
 
     def fetch_comments(self, movie_id: str, sort: str = "new_score") -> List[Dict]:
         """获取单个电影的短评"""
