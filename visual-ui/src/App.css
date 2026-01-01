@@ -18,6 +18,25 @@
   font-weight: 600;
 }
 
+/* Data Display Page specific styles */
+.data-display-container {
+  background: linear-gradient(135deg, #001529, #1e3c72) !important;
+  color: #fff !important;
+  min-height: calc(100vh - 130px) !important;
+}
+
+.data-display-container .ant-card {
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.data-display-container .ant-card-head-title {
+  color: #fff !important;
+}
+
+.data-display-container .ant-typography {
+  color: #fff !important;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .ant-statistic-content {
