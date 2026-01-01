@@ -92,6 +92,7 @@ class DoubanMovieCommentFetcher:
 
         while True:
             url = f"https://movie.douban.com/subject/{movie_id}/comments?start={start}&limit={self.page_size}&status=P&sort={sort}&ck=UaKp"
+            url = f"https://movie.douban.com/subject/{movie_id}/comments?percent_type=&start=20&limit=20&status=P&sort=new_score&comments_only=1&ck=xu8x"
 
             try:
                 response = None
