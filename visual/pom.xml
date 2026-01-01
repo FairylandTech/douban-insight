@@ -22,8 +22,8 @@
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- dependence -->
-        <spring.boot.version>3.5.8</spring.boot.version>
-        <mybatis.spring.boot.version>4.0.0</mybatis.spring.boot.version>
+        <spring.boot.version>3.4.8</spring.boot.version>
+        <mybatis.spring.boot.version>3.0.5</mybatis.spring.boot.version>
         <!-- custom dependence -->
         <java.fairylandfuture.version>1.0.0</java.fairylandfuture.version>
     </properties>
