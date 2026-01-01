@@ -1,4 +1,4 @@
-# douban-insight
+# 基于网络爬虫的豆瓣电影短评情感分析与主题挖掘
 
 > @software: Typora  
 > @author: [Lionel Johnson](https://fairy.host)  
@@ -17,7 +17,16 @@ Development Environment
 
 ---
 
-# 基于网络爬虫的豆瓣电影短评情感分析与主题挖掘
+# 项目简介
+
+本项目旨在通过网络爬虫技术，获取豆瓣电影的短评数据，并对这些数据进行情感分析与主题挖掘。通过分析用户对电影的评价，了解观众的情感倾向和关注点，为电影制作和市场推广提供有价值的参考。
+
+# 项目架构
+
+- 爬虫模块(spider)：基于 Scrapy 框架，使用 Python3.12+，实现对豆瓣电影短评的爬取，支持多线程和分布式爬取，确保数据获取的效率和完整性。
+- 情感分析和主题挖掘模块(analysis)：使用 Python3.12+，利用自然语言处理（SnowNLP）和 Bert 模型（[uer/roberta-base-finetuned-jd-binary-chinese](https://huggingface.co/uer/roberta-base-finetuned-jd-binary-chinese)），对爬取的短评数据进行情感分类和主题提取，揭示用户的情感倾向和关注话题。
+- Web 服务端(visual): 基于 Spring Boot 框架，使用 Java17 + Spring Boot 3.5.8 提供数据展示和交互功能，用户可以通过 Web 界面查看分析结果和可视化图表。
+- Web UI 前端(visual-ui): 使用 React 和 Ant Design 实现用户界面，提供友好的用户体验和数据可视化展示。
 
 # 每日进度
 
@@ -27,4 +36,4 @@ Development Environment
 - 2025-12-25：实现电影信息全部自动入库, 优化缓存机制, 数据库改为 PostgreSQL;, 重构数据获取翻页逻辑, 增加电影类型筛选, Spider 增加代理请求.
 - 2025-12-26：优化电影信息获取, 完善电影 ID 获取逻辑, 获取数据改为单线程应对豆瓣的反爬机制, 增加入库电影 ID 和已获取电影 ID 的对比逻辑, 避免重复获取数据, 解析电影短评数据 (阿里云服务器炸了, 数据....)
 - 2025-12-27：恢复数据
-- 2026-01-01: 新增前端Dashboard, 使用React+Ant Design实现数据可视化展示, Mock数据进行前端页面开发.
+- 2026-01-01: 新增前端 Dashboard, 使用 React + Ant Design 实现数据可视化展示, Mock数据进行前端页面开发. 新增 Web 后端服务, 使用 Spring Boot 框架实现数据接口服务, 提供前端数据支持.
