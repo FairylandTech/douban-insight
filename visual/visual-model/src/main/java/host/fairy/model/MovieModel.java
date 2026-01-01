@@ -8,12 +8,10 @@
 package host.fairy.model;
 
 import host.fairy.fairylandfuture.model.ModelBase;
-import lombok.Builder;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
+import lombok.*;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 /**
  * @author Lionel Johnson
@@ -21,6 +19,8 @@ import java.time.LocalDate;
  */
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 @ToString(callSuper = true)
 @EqualsAndHashCode(callSuper = true)
 public class MovieModel extends ModelBase {

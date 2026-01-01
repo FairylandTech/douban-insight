@@ -1,14 +1,43 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="">
-    <!--@Table  -->
+<mapper namespace="host.fairy.mapper.MovieMapper">
+    <!--@Table
+    movie.tb_movie-->
 
-    <resultMap id="BaseResultMap" type="" autoMapping="true">
+    <resultMap id="BaseResultMap" type="host.fairy.model.MovieModel" autoMapping="false">
         <id column="id" jdbcType="INTEGER" property="id"/>
-
+        <result column="movie_id" jdbcType="VARCHAR" property="movieId"/>
+        <result column="full_name" jdbcType="VARCHAR" property="fullName"/>
+        <result column="chinese_name" jdbcType="VARCHAR" property="chineseName"/>
+        <result column="original_name" jdbcType="VARCHAR" property="originalName"/>
+        <result column="release_date" jdbcType="DATE" property="releaseDate"/>
+        <result column="score" jdbcType="FLOAT" property="score"/>
+        <result column="summary" jdbcType="LONGVARCHAR" property="summary"/>
+        <result column="icon" jdbcType="VARCHAR" property="icon"/>
         <result column="created_at" jdbcType="TIMESTAMP" property="createdAt"/>
         <result column="updated_at" jdbcType="TIMESTAMP" property="updatedAt"/>
         <result column="deleted" jdbcType="BOOLEAN" property="deleted"/>
     </resultMap>
+
+    <select id="selectMovieByMovieId" resultMap="BaseResultMap">
+        select
+            id,
+            movie_id,
+            full_name,
+            chinese_name,
+            original_name,
+            release_date,
+            score,
+            summary,
+            icon,
+            created_at,
+            updated_at,
+            deleted
+        from
+            movie.tb_movie
+        where
+            movie_id = #{id}
+            and deleted = false
+    </select>
 
 </mapper>

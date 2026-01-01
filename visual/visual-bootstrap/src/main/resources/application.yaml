@@ -10,3 +10,6 @@ spring:
 logging:
   level:
     org.springframework.boot.autoconfigure: off
+mybatis:
+  mapper-locations: 
+    - classpath:mapper/*.xml
