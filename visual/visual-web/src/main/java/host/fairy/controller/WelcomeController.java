@@ -25,7 +25,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/welcome")
+@RequestMapping("/v1/welcome")
 public class WelcomeController {
     
     private final WelcomeService welcomeService;
@@ -39,7 +39,7 @@ public class WelcomeController {
      *
      * @return Response
      */
-    @GetMapping
+    @GetMapping("/hello")
     public Response<Map<String, String>> welcome() {
         log.info("Welcome endpoint accessed! {}", LocalDateTime.now().toString());
         String message = welcomeService.welcome();

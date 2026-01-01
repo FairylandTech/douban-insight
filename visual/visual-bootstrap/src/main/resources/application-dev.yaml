@@ -1,2 +1,20 @@
 server:
   port: 8000
+spring:
+  datasource:
+    driver-class-name: org.postgresql.Driver
+    url: jdbc:postgresql://tencent.cloud.chengdu1.fairy.host:5432/douban?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai
+    username: douban
+    password: jG7ikYc4ufX0bdb6gypg7nnRTwIscTsn
+    hikari:
+      pool-name: DoubanHikariPool
+      connection-timeout: 30000
+      maximum-pool-size: 50
+      minimum-idle: 5
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-test-query: SELECT 1
+      validation-timeout: 5000
+      leak-detection-threshold: 60000
+      auto-commit: false
+debug: true

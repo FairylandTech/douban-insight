@@ -1,5 +1,12 @@
 server:
   port: 8080
+  servlet:
+    context-path: /api
 spring:
+  application:
+    name: visual
   profiles:
     active: dev
+logging:
+  level:
+    org.springframework.boot.autoconfigure: off

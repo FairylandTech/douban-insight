@@ -12,6 +12,8 @@
         <module>visual-bootstrap</module>
         <module>visual-web</module>
         <module>visual-service</module>
+        <module>visual-model</module>
+        <module>visual-mapper</module>
     </modules>
 
     <properties>
@@ -22,6 +24,8 @@
         <!-- dependence -->
         <spring.boot.version>3.5.8</spring.boot.version>
         <mybatis.spring.boot.version>4.0.0</mybatis.spring.boot.version>
+        <!-- custom dependence -->
+        <java.fairylandfuture.version>1.0.0</java.fairylandfuture.version>
     </properties>
 
     <dependencyManagement>
@@ -38,6 +42,12 @@
                 <groupId>org.mybatis.spring.boot</groupId>
                 <artifactId>mybatis-spring-boot-starter</artifactId>
                 <version>${mybatis.spring.boot.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>host.fairy</groupId>
+                <artifactId>java-fairylandfuture</artifactId>
+                <version>${java.fairylandfuture.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
