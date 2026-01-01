@@ -177,3 +177,10 @@ values
     ('巴西'),
     ('丹麦')
 on conflict (name) do nothing;;
+
+alter table movie.tb_movie
+    alter column updated_at type timestamp
+        using updated_at at time zone 'Asia/Shanghai';
+alter table movie.tb_movie
+    alter column created_at type timestamp
+        using created_at at time zone 'Asia/Shanghai';
