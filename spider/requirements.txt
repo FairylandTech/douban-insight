@@ -13,7 +13,7 @@ pypinyin==0.55.0
 python_dateutil==2.9.0.post0
 PyYAML==6.0.3
 redis==7.1.0
-scrapy==2.13.4
+scrapy==2.14.2
 SQLAlchemy==2.0.45
 Twisted==25.5.0
 urllib3==2.6.2
