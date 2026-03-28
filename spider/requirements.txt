@@ -1,4 +1,4 @@
-cryptography==46.0.3
+cryptography==46.0.6
 dbutils==3.1.2
 djangorestframework==3.16.1
 fake_useragent==2.2.0
